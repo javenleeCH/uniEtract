@@ -1,0 +1,15 @@
+# Repository-wide line-ending policy.
+# Everything is stored and checked out with LF so diffs, golden tests and
+# piped output stay byte-identical across Windows, Linux and macOS.
+* text=auto eol=lf
+
+# Windows batch files are the one exception: cmd.exe requires CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Never line-ending-normalize binary assets.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
