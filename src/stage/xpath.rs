@@ -10,10 +10,7 @@ pub struct XPathStage {
 }
 
 impl XPathStage {
-    pub fn compile(
-        source: &str,
-        namespaces: &[(String, String)],
-    ) -> Result<Self, AppError> {
+    pub fn compile(source: &str, namespaces: &[(String, String)]) -> Result<Self, AppError> {
         let expression = Factory::new()
             .build(source)
             .map_err(|error| AppError::Query(format!("invalid XPath: {error}")))?

@@ -1,11 +1,14 @@
-use std::io;
+use std::io::{self, IsTerminal};
 use std::process::ExitCode;
 
 use clap::Parser;
 use uniextract::cli::Cli;
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+    // Interactive terminals get per-result flushing automatically; pipelines
+    // that need output before EOF must opt in with --line-buffered.
+    cli.interactive = io::stdout().is_terminal();
     let stdin = io::stdin();
     let stdout = io::stdout();
     let stderr = io::stderr();

@@ -5,6 +5,15 @@ use std::sync::Arc;
 use serde_json::{Map, Number, Value as JsonValue};
 use sxd_xpath::nodeset::Node;
 
+use crate::error::AppError;
+
+/// A consumer of pipeline items. Using a trait (instead of a closure with a single
+/// inferred lifetime) lets `Item<'doc>` with document-bound `Node` values cross module
+/// boundaries without leaking the borrow (invariant I1).
+pub trait ItemSink {
+    fn accept(&mut self, item: Item<'_>) -> Result<(), AppError>;
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Origin {
     pub path: Option<Arc<PathBuf>>,

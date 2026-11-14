@@ -1,0 +1,41 @@
+// ux pipeline DSL — structural grammar (pest).
+//
+// This grammar owns exactly one job: locate the top-level `|` separators and
+// hand each stage back its name plus the *verbatim* text between its parens.
+// It deliberately does NOT decode escapes, validate regexes, or decide which
+// stage names exist. Those are semantic concerns and stay in src/dsl.rs so
+// `StageSpec` remains the single source of truth for the stage set.
+//
+// `inner` is atomic (`@`): its span is the exact source slice. String rules
+// exist only so that a `(` or `)` *inside* a string cannot be mistaken for
+// the stage's closing paren; their lexical details are re-read by Rust.
+
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+pipeline = { SOI ~ stage ~ ( "|" ~ stage )* ~ EOI }
+
+stage      = { stage_name ~ "(" ~ inner ~ ")" }
+stage_name = @{ ( ASCII_ALPHA | "_" )+ }
+inner      = @{ balanced* }
+
+// Ordered choice matters: a raw string must win before `r` falls through to
+// `plain`, and strings must win before `group`/`plain` can see their parens.
+balanced      = _{ raw_string | quoted_string | group | plain }
+group         = _{ "(" ~ balanced* ~ ")" }
+quoted_string = _{ double_quoted | single_quoted }
+double_quoted = _{ "\"" ~ ( "\\" ~ ANY | !"\"" ~ ANY )* ~ "\"" }
+single_quoted = _{ "'"  ~ ( "\\" ~ ANY | !"'"  ~ ANY )* ~ "'" }
+
+// Rust-style raw strings with an arbitrary number of `#`.
+// PUSH records the exact hash run; PEEK matches only that same run again, so
+// `r#"a)b"#` keeps its `)` inside the string instead of closing the stage.
+// `PEEK` inside the repeat is a lookahead (it does not pop, but it does
+// consume input when it succeeds), so the terminator must use `POP`, not
+// `PEEK ~ POP` — that would demand the hash run twice.
+raw_string = _{
+    "r" ~ PUSH( "#"* ) ~ "\""
+        ~ ( !( "\"" ~ PEEK ) ~ ANY )*
+        ~ "\"" ~ POP
+}
+
+plain = _{ !( "(" | ")" | "'" | "\"" ) ~ ANY }

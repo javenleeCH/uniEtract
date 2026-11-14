@@ -1,43 +1,43 @@
 use std::collections::HashSet;
 use std::io::{BufRead, Read};
-use std::path::Path;
-use std::sync::Arc;
 
 use serde::Deserialize;
 use serde_json::{Map, Value as JsonValue};
 
-use crate::cli::{InputFormat, TextMode};
-use crate::engine::Pipeline;
+use crate::cli::{Cli, InputFormat, TextMode};
 use crate::error::AppError;
-use crate::model::{Item, Origin, Value};
-use crate::output::OutputSink;
+use crate::model::{Item, ItemSink, Origin, Value};
+use crate::source::InputSource;
 
-pub fn process_reader(
-    reader: &mut dyn BufRead,
-    requested_format: InputFormat,
-    text_mode: TextMode,
-    path: Option<Arc<std::path::PathBuf>>,
-    pipeline: &Pipeline,
-    output: &mut OutputSink<'_>,
+pub fn process_source(
+    source: &mut InputSource<'_>,
+    cli: &Cli,
+    sink: &mut dyn ItemSink,
 ) -> Result<(), AppError> {
-    let format = if requested_format == InputFormat::Auto {
-        detect_format(path.as_ref().map(|path| path.as_path()), reader.fill_buf()?)
-    } else {
-        requested_format
-    };
-    let base = Origin::new(path, 1);
+    let format = source.format;
+    let max_input_size = source.max_input_size;
+    let max_record_size = source.max_record_size;
+    let base = Origin::new(source.path.clone(), 1);
+    let reader = source.reader();
     match format {
-        InputFormat::Json => process_json(reader, &base, pipeline, output),
-        InputFormat::Jsonl => process_jsonl(reader, &base, pipeline, output),
-        InputFormat::Text => process_text(reader, text_mode, &base, pipeline, output),
+        InputFormat::Json => process_json(reader, &base, max_input_size, sink),
+        InputFormat::Jsonl => process_jsonl(reader, &base, max_record_size, sink),
+        InputFormat::Text => process_text(
+            reader,
+            cli.text_mode,
+            &base,
+            max_input_size,
+            max_record_size,
+            sink,
+        ),
         InputFormat::Xml | InputFormat::Html => {
-            let source = read_utf8(reader, &base)?;
-            crate::markup::process(&source, format, &base, pipeline, output)
+            let source = read_utf8_limited(reader, &base, max_input_size)?;
+            crate::markup::process(&source, format, &base, sink)
         }
-        InputFormat::Yaml => process_yaml(reader, &base, pipeline, output),
-        InputFormat::Toml => process_toml(reader, &base, pipeline, output),
-        InputFormat::Csv => process_csv(reader, b',', "CSV", &base, pipeline, output),
-        InputFormat::Tsv => process_csv(reader, b'\t', "TSV", &base, pipeline, output),
+        InputFormat::Yaml => process_yaml(reader, &base, max_input_size, sink),
+        InputFormat::Toml => process_toml(reader, &base, max_input_size, sink),
+        InputFormat::Csv => process_csv(reader, b',', "CSV", &base, max_record_size, sink),
+        InputFormat::Tsv => process_csv(reader, b'\t', "TSV", &base, max_record_size, sink),
         InputFormat::Auto => Err(AppError::Runtime(format!(
             "{base}: internal input format detection failure"
         ))),
@@ -47,27 +47,25 @@ pub fn process_reader(
 fn process_json(
     reader: &mut dyn BufRead,
     base: &Origin,
-    pipeline: &Pipeline,
-    output: &mut OutputSink<'_>,
+    limit: u64,
+    sink: &mut dyn ItemSink,
 ) -> Result<(), AppError> {
-    let source = read_utf8(reader, base)?;
+    let source = read_utf8_limited(reader, base, limit)?;
     let value = serde_json::from_str(&source)
         .map_err(|error| AppError::Runtime(format!("{base}: invalid JSON: {error}")))?;
-    emit(Value::Data(value), base, pipeline, output)
+    emit(Value::Data(value), base, sink)
 }
 
 fn process_jsonl(
     reader: &mut dyn BufRead,
     base: &Origin,
-    pipeline: &Pipeline,
-    output: &mut OutputSink<'_>,
+    limit: u64,
+    sink: &mut dyn ItemSink,
 ) -> Result<(), AppError> {
-    let mut record = 0;
-    for (index, line) in reader.lines().enumerate() {
-        let line_number = index as u64 + 1;
-        let line = line.map_err(|error| {
-            AppError::Runtime(format!("{}: cannot read UTF-8 line: {error}", base.at_line(line_number)))
-        })?;
+    let mut line_number = 0_u64;
+    let mut record = 0_u64;
+    while let Some(line) = next_line(reader, limit, base, line_number + 1)? {
+        line_number += 1;
         if line.trim().is_empty() {
             continue;
         }
@@ -76,7 +74,7 @@ fn process_jsonl(
         let value = serde_json::from_str(&line).map_err(|error| {
             AppError::Runtime(format!("{origin}: invalid JSONL record: {error}"))
         })?;
-        emit(Value::Data(value), &origin, pipeline, output)?;
+        emit(Value::Data(value), &origin, sink)?;
     }
     Ok(())
 }
@@ -85,20 +83,20 @@ fn process_text(
     reader: &mut dyn BufRead,
     mode: TextMode,
     base: &Origin,
-    pipeline: &Pipeline,
-    output: &mut OutputSink<'_>,
+    input_limit: u64,
+    record_limit: u64,
+    sink: &mut dyn ItemSink,
 ) -> Result<(), AppError> {
     if mode == TextMode::Raw {
-        let source = read_utf8(reader, base)?;
-        return emit(Value::Text(source), base, pipeline, output);
+        let source = read_utf8_limited(reader, base, input_limit)?;
+        return emit(Value::Text(source), base, sink);
     }
-    for (index, line) in reader.lines().enumerate() {
-        let line_number = index as u64 + 1;
-        let line = line.map_err(|error| {
-            AppError::Runtime(format!("{}: cannot read UTF-8 line: {error}", base.at_line(line_number)))
-        })?;
+    let mut line_number = 0_u64;
+    // Empty lines are records too (§5.6), so they are emitted, not skipped.
+    while let Some(line) = next_line(reader, record_limit, base, line_number + 1)? {
+        line_number += 1;
         let origin = Origin::at_line(&Origin::new(base.path.clone(), line_number), line_number);
-        emit(Value::Text(line), &origin, pipeline, output)?;
+        emit(Value::Text(line), &origin, sink)?;
     }
     Ok(())
 }
@@ -106,18 +104,17 @@ fn process_text(
 fn process_yaml(
     reader: &mut dyn BufRead,
     base: &Origin,
-    pipeline: &Pipeline,
-    output: &mut OutputSink<'_>,
+    limit: u64,
+    sink: &mut dyn ItemSink,
 ) -> Result<(), AppError> {
-    let source = read_utf8(reader, base)?;
+    let source = read_utf8_limited(reader, base, limit)?;
     for (index, document) in serde_yaml_ng::Deserializer::from_str(&source).enumerate() {
         let origin = Origin::new(base.path.clone(), index as u64 + 1);
-        let yaml = serde_yaml_ng::Value::deserialize(document).map_err(|error| {
-            AppError::Runtime(format!("{origin}: invalid YAML: {error}"))
-        })?;
+        let yaml = serde_yaml_ng::Value::deserialize(document)
+            .map_err(|error| AppError::Runtime(format!("{origin}: invalid YAML: {error}")))?;
         let value = yaml_to_json(yaml)
             .map_err(|message| AppError::Runtime(format!("{origin}: {message}")))?;
-        emit(Value::Data(value), &origin, pipeline, output)?;
+        emit(Value::Data(value), &origin, sink)?;
     }
     Ok(())
 }
@@ -151,15 +148,15 @@ fn yaml_to_json(value: serde_yaml_ng::Value) -> Result<JsonValue, String> {
 fn process_toml(
     reader: &mut dyn BufRead,
     base: &Origin,
-    pipeline: &Pipeline,
-    output: &mut OutputSink<'_>,
+    limit: u64,
+    sink: &mut dyn ItemSink,
 ) -> Result<(), AppError> {
-    let source = read_utf8(reader, base)?;
+    let source = read_utf8_limited(reader, base, limit)?;
     let value: toml::Value = toml::from_str(&source)
         .map_err(|error| AppError::Runtime(format!("{base}: invalid TOML: {error}")))?;
-    let value = toml_to_json(value)
-        .map_err(|message| AppError::Runtime(format!("{base}: {message}")))?;
-    emit(Value::Data(value), base, pipeline, output)
+    let value =
+        toml_to_json(value).map_err(|message| AppError::Runtime(format!("{base}: {message}")))?;
+    emit(Value::Data(value), base, sink)
 }
 
 fn toml_to_json(value: toml::Value) -> Result<JsonValue, String> {
@@ -191,8 +188,8 @@ fn process_csv(
     delimiter: u8,
     label: &str,
     base: &Origin,
-    pipeline: &Pipeline,
-    output: &mut OutputSink<'_>,
+    record_limit: u64,
+    sink: &mut dyn ItemSink,
 ) -> Result<(), AppError> {
     let mut csv = csv::ReaderBuilder::new()
         .delimiter(delimiter)
@@ -224,19 +221,19 @@ fn process_csv(
         let record = record.map_err(|error| {
             AppError::Runtime(format!("{origin}: invalid {label} record: {error}"))
         })?;
-        let origin = record.position().map_or(origin.clone(), |position| {
-            origin.at_line(position.line())
-        });
+        let origin = record
+            .position()
+            .map_or(origin.clone(), |position| origin.at_line(position.line()));
+        if record_limit > 0 && record.as_slice().len() as u64 > record_limit {
+            return Err(AppError::Runtime(format!(
+                "{origin}: {label} record exceeds --max-record-size ({record_limit} bytes)"
+            )));
+        }
         let mut object = Map::new();
         for (header, field) in headers.iter().zip(record.iter()) {
             object.insert(header.to_owned(), JsonValue::String(field.to_owned()));
         }
-        emit(
-            Value::Data(JsonValue::Object(object)),
-            &origin,
-            pipeline,
-            output,
-        )?;
+        emit(Value::Data(JsonValue::Object(object)), &origin, sink)?;
     }
     Ok(())
 }
@@ -244,59 +241,106 @@ fn process_csv(
 pub(crate) fn emit(
     value: Value<'_>,
     origin: &Origin,
-    pipeline: &Pipeline,
-    output: &mut OutputSink<'_>,
+    sink: &mut dyn ItemSink,
 ) -> Result<(), AppError> {
-    pipeline.execute(Item::new(value, origin.clone()), &mut |item| output.emit(item))
+    sink.accept(Item::new(value, origin.clone()))
 }
 
-fn read_utf8(reader: &mut dyn Read, base: &Origin) -> Result<String, AppError> {
-    let mut source = String::new();
-    reader.read_to_string(&mut source).map_err(|error| {
-        AppError::Runtime(format!("{base}: input is not valid UTF-8: {error}"))
-    })?;
-    Ok(source)
-}
-
-fn detect_format(path: Option<&Path>, prefix: &[u8]) -> InputFormat {
-    if let Some(extension) = path
-        .and_then(Path::extension)
-        .and_then(|extension| extension.to_str())
-        .map(str::to_ascii_lowercase)
-    {
-        let known = match extension.as_str() {
-            "json" => Some(InputFormat::Json),
-            "jsonl" | "ndjson" => Some(InputFormat::Jsonl),
-            "yaml" | "yml" => Some(InputFormat::Yaml),
-            "toml" => Some(InputFormat::Toml),
-            "xml" => Some(InputFormat::Xml),
-            "html" | "htm" => Some(InputFormat::Html),
-            "txt" | "log" => Some(InputFormat::Text),
-            "csv" => Some(InputFormat::Csv),
-            "tsv" | "tab" => Some(InputFormat::Tsv),
-            _ => None,
-        };
-        if let Some(known) = known {
-            return known;
+fn read_utf8_limited(
+    reader: &mut dyn BufRead,
+    base: &Origin,
+    limit: u64,
+) -> Result<String, AppError> {
+    let mut bytes = Vec::new();
+    if limit == 0 {
+        reader
+            .read_to_end(&mut bytes)
+            .map_err(|error| AppError::Runtime(format!("{base}: cannot read input: {error}")))?;
+    } else {
+        let mut taken = reader.take(limit.saturating_add(1));
+        taken
+            .read_to_end(&mut bytes)
+            .map_err(|error| AppError::Runtime(format!("{base}: cannot read input: {error}")))?;
+        if bytes.len() as u64 > limit {
+            return Err(AppError::Runtime(format!(
+                "{base}: whole-document input exceeds --max-input-size ({limit} bytes)"
+            )));
         }
     }
+    String::from_utf8(bytes).map_err(|error| {
+        AppError::Runtime(format!(
+            "{base}: input is not valid UTF-8 at byte {}: use --encoding auto or --encoding gbk",
+            error.utf8_error().valid_up_to()
+        ))
+    })
+}
 
-    let start = prefix
-        .iter()
-        .position(|byte| !byte.is_ascii_whitespace())
-        .unwrap_or(prefix.len());
-    let prefix = &prefix[start..];
-    match prefix.first() {
-        Some(b'{') | Some(b'[') => InputFormat::Json,
-        Some(b'<') => {
-            let beginning = String::from_utf8_lossy(&prefix[..prefix.len().min(128)])
-                .to_ascii_lowercase();
-            if beginning.contains("<!doctype html") || beginning.contains("<html") {
-                InputFormat::Html
-            } else {
-                InputFormat::Xml
-            }
-        }
-        _ => InputFormat::Text,
+/// Reads one logical line, stripping the trailing LF and (for CRLF) CR, and
+/// enforcing `--max-record-size` before the whole line is materialized.
+fn next_line(
+    reader: &mut dyn BufRead,
+    limit: u64,
+    base: &Origin,
+    line_number: u64,
+) -> Result<Option<String>, AppError> {
+    let mut bytes = Vec::new();
+    let read = if limit == 0 {
+        reader.read_until(b'\n', &mut bytes)?
+    } else {
+        let mut taken = (&mut *reader).take(limit.saturating_add(1));
+        taken.read_until(b'\n', &mut bytes)?
+    };
+    if read == 0 {
+        return Ok(None);
+    }
+    if bytes.last() == Some(&b'\n') {
+        bytes.pop();
+    }
+    if bytes.last() == Some(&b'\r') {
+        bytes.pop();
+    }
+    if limit > 0 && bytes.len() as u64 > limit {
+        return Err(AppError::Runtime(format!(
+            "{}: line exceeds --max-record-size ({limit} bytes)",
+            base.at_line(line_number)
+        )));
+    }
+    let line = String::from_utf8(bytes).map_err(|error| {
+        AppError::Runtime(format!(
+            "{}: cannot read UTF-8 line at byte {}: use --encoding auto or --encoding gbk",
+            base.at_line(line_number),
+            error.utf8_error().valid_up_to()
+        ))
+    })?;
+    Ok(Some(line))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn next_line_strips_crlf_and_enforces_limit() {
+        let mut reader = Cursor::new(b"one\r\ntwo\n".to_vec());
+        let base = Origin::default();
+        assert_eq!(
+            next_line(&mut reader, 0, &base, 1).unwrap(),
+            Some("one".to_owned())
+        );
+        assert_eq!(
+            next_line(&mut reader, 0, &base, 2).unwrap(),
+            Some("two".to_owned())
+        );
+        assert_eq!(next_line(&mut reader, 0, &base, 3).unwrap(), None);
+
+        let mut short = Cursor::new(b"abcdef\n".to_vec());
+        assert!(next_line(&mut short, 3, &base, 1).is_err());
+    }
+
+    #[test]
+    fn read_utf8_limited_reports_overflow() {
+        let mut reader = Cursor::new(b"123456".to_vec());
+        assert!(read_utf8_limited(&mut reader, &Origin::default(), 3).is_err());
     }
 }

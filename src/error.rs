@@ -7,6 +7,9 @@ pub enum AppError {
     #[error("query error: {0}")]
     Query(String),
 
+    #[error("{0}")]
+    Usage(String),
+
     #[error("{origin}: stage `{stage}`: {message}")]
     Eval {
         origin: Origin,
@@ -24,7 +27,7 @@ pub enum AppError {
 impl AppError {
     pub fn exit_code(&self) -> u8 {
         match self {
-            Self::Query(_) => 2,
+            Self::Query(_) | Self::Usage(_) => 2,
             _ => 1,
         }
     }

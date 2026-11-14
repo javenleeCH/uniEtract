@@ -1,0 +1,22 @@
+[package]
+name = "ux-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+uniextract = { path = ".." }
+
+[[bin]]
+name = "dsl_split"
+path = "fuzz_targets/dsl_split.rs"
+test = false
+doc = false
+
+# Keep the fuzz crate out of the main workspace so `cargo test` never needs
+# libfuzzer-sys or a nightly toolchain.
+[workspace]
