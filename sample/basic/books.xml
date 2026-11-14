@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<root xmlns:b="urn:books">
+  <b:book sku="ABC-123"><b:title>Rust in Action</b:title></b:book>
+  <b:book sku="DEF-456"><b:title>Programming Rust</b:title></b:book>
+</root>

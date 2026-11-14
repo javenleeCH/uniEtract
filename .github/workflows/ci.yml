@@ -16,6 +16,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
       - name: Format
         run: cargo fmt --check
       - name: Clippy
@@ -24,3 +27,5 @@ jobs:
         run: cargo test --all-targets
       - name: Release build
         run: cargo build --release
+      - name: Sample smoke
+        run: python sample/smoke.py

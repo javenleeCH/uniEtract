@@ -13,3 +13,14 @@
 *.jpeg binary
 *.gif binary
 *.pdf binary
+
+# sample/ byte-sensitive fixtures: CRLF, BOM, UTF-16, GB18030 and binary
+# payloads must survive checkout byte-for-byte, or their CLI tests are void.
+sample/edge/crlf.log binary
+sample/edge/bom-utf8.jsonl binary
+sample/edge/utf16le.txt binary
+sample/edge/utf16be.xml binary
+sample/edge/gbk.txt binary
+sample/edge/binary.bin binary
+sample/edge/nul-bytes.bin binary
+sample/edge/empty.jsonl binary

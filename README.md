@@ -66,6 +66,25 @@ DSL 结构由 `pest` 的 PEG 语法（`src/dsl.pest`）描述，`src/dsl.rs` 负
 tail -f app.log | ux --line-buffered -f text -O text -e 're(r"ERROR: (?<m>.*)") | jq(.m)'
 ```
 
+## 样本与冒烟测试
+
+`sample/` 是可直接喂给 CLI 的固定夹具，不依赖网络或临时目录：
+
+| 目录 | 内容 |
+|---|---|
+| `basic/` | 9 种输入格式各一份标准样本（JSON、JSONL、YAML、TOML、XML、HTML、CSV、TSV、text/log） |
+| `edge/` | BOM、GB18030、UTF-16LE/BE、CRLF、空文件、空行 Origin、大整数、多文档 YAML、CSV 引号、坏 XML、二进制、超长行、无扩展名、`split()`、HTML 容错树形、XML 命名空间 |
+| `discover/` | 目录排序、默认忽略目录剪枝（`node_modules/`、`target/`）、glob、fuzzy |
+
+```powershell
+python sample/generate.py    # 重建全部夹具（含非 UTF-8 与二进制文件）
+python sample/smoke.py       # 对 release 二进制跑 45 条断言
+python sample/smoke.py --only encoding
+python sample/smoke.py --ux .\target\debug\ux.exe
+```
+
+`smoke.py` 通过 subprocess 直接调用 `ux`（不经过 shell），因此不受 MSYS2 的 `//a` 路径转换影响；CI 在 `cargo build --release` 之后自动运行它。
+
 ## 已知限制
 
 - `--ns` 只解析 XPath 表达式前缀，**不**按 namespace URI 匹配；默认命名空间或不同前缀的等价文档匹配不上。

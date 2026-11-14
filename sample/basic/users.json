@@ -1,0 +1,8 @@
+{
+  "team": "core",
+  "users": [
+    {"id": 1, "name": "alice", "msg": "user=42"},
+    {"id": 2, "name": "bob", "msg": "user=7"},
+    {"id": 3, "name": "carol", "msg": "user=99"}
+  ]
+}

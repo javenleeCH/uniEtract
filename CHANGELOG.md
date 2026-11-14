@@ -13,6 +13,7 @@
 - 输出：`-O json` 默认缩进 + `--compact`、`--max-results`、`--line-buffered`（终端自动启用）、64 KiB 批量刷新。
 - jq 数值契约：显式 `Val → JsonValue` 转换，大整数字面量保真，`NaN`/`±Inf` 映射为 `null`。
 - 端到端测试：`tests/cli.rs`（26 项，含 HTML 隐式 `<tbody>` / `<template>` / `<noscript>` / 大小写折叠专项）、`tests/jq_compat.rs`（3 项）、CI 双平台门禁、`fuzz/` DSL 解析骨架。
+- 样本夹具：`sample/` 下 41 个文件覆盖全部输入格式与边界；`sample/generate.py` 可重建非 UTF-8/二进制夹具，`sample/smoke.py` 提供 45 条可执行断言并已接入 CI。
 
 ### 破坏性变更与迁移
 
