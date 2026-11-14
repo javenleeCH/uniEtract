@@ -101,4 +101,6 @@ python sample/export_cases.py --check
 - Windows Git Bash / MSYS2 会把 `-e` 里的 `//a`、`//b:book` 当 UNC 路径改写，导致 XPath 静默零匹配。执行前设 `MSYS2_ARG_CONV_EXCL='*'`，或改用 PowerShell。这是 shell 的参数转换，不是 `ux` 的解析问题。
 - DSL 括号嵌套最多 128 层，超限时报错退出 2（不崩溃、不静默截断）；限制只针对嵌套深度，不影响长正则或长 jq filter。
 
-完整契约、ADR 与实施计划见 `.trae/documents/统一信息抽取器-cli-设计.md`（v3）。变更记录见 `CHANGELOG.md`。
+完整契约、ADR 与实施计划见 `.trae/documents/统一信息抽取器-cli-设计.md`（v3）。
+模块拆分（`locate` / `extract`）与路径匹配能力的设计提案见 `.trae/documents/路径匹配模块-设计.md`（v1 提案，**未实现**；文中 `--path-spec` 等 `[提案]` 参数当前不可用，路径筛选仍需外部脚本先定位文件）。
+变更记录见 `CHANGELOG.md`。
