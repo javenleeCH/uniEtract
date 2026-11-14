@@ -29,3 +29,5 @@ jobs:
         run: cargo build --release
       - name: Sample smoke
         run: python sample/smoke.py
+      - name: Sample cases checklist is up to date
+        run: python sample/export_cases.py --check

@@ -77,13 +77,17 @@ tail -f app.log | ux --line-buffered -f text -O text -e 're(r"ERROR: (?<m>.*)") 
 | `discover/` | 目录排序、默认忽略目录剪枝（`node_modules/`、`target/`）、glob、fuzzy |
 
 ```powershell
-python sample/generate.py    # 重建全部夹具（含非 UTF-8 与二进制文件）
-python sample/smoke.py       # 对 release 二进制跑 45 条断言
+python sample/generate.py            # 重建全部夹具（含非 UTF-8 与二进制文件）
+python sample/smoke.py               # 对 release 二进制跑 45 条断言
 python sample/smoke.py --only encoding
 python sample/smoke.py --ux .\target\debug\ux.exe
+python sample/export_cases.py        # 重建人工抽样检查清单 sample/CASES.md
+python sample/export_cases.py --check
 ```
 
-`smoke.py` 通过 subprocess 直接调用 `ux`（不经过 shell），因此不受 MSYS2 的 `//a` 路径转换影响；CI 在 `cargo build --release` 之后自动运行它。
+`sample/CASES.md` 是同源自 `smoke.py` 生成的**人工抽样检查清单**：45 条用例的可复制命令、检查点、预期退出码 / stdout / stderr，以及 41 个夹具的原文与字节特征。人工抽样时按分组勾选即可；CI 用 `--check` 保证清单不与断言漂移。
+
+`smoke.py` 通过 subprocess 直接调用 `ux`（不经过 shell），因此不受 MSYS2 的 `//a` 路径转换影响；CI 在 `cargo build --release` 之后自动运行它。`CASES.md` 里的 bash 命令在 Git Bash 下执行前需 `export MSYS2_ARG_CONV_EXCL='*'`，清单内已注明。
 
 ## 已知限制
 
