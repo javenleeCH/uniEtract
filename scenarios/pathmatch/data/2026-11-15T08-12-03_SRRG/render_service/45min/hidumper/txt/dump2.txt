@@ -1,0 +1,8 @@
+----- render_service hidumper meminfo -----
+                   PSS   Shared  Private   Heap
+                  (KB)   Dirty    Dirty   Size
+                ------  ------   ------  ------
+  NativeHeap pss: 67890 kB
+  Dalvik Heap pss: 2048 kB
+  .so mmap pss: 4096 kB
+TOTAL: 67890 kB  tag=A2

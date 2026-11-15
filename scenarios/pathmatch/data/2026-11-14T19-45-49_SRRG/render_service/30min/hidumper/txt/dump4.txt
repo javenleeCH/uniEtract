@@ -1,0 +1,6 @@
+----- render_service hidumper meminfo -----
+nativeheap pss: 999 kB
+NativeHeap: 111 kB
+NativeHeap pss 888 kB
+NativeHeap pss: 777 MB
+TOTAL: 0 kB
