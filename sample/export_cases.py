@@ -392,8 +392,8 @@ def render(cases):
     add("## 6. 已修复事项与清单边界")
     add("")
     add("- **未注册前缀已在 0.3.0 修复**：`xpath(\"//x:book\")` 现在于编译期返回 `Query(2)` 并提示 `--ns PREFIX=URI`，不再触发 `sxd-xpath` panic（rc=101）；由 `tests/agent.rs` 覆盖，本清单不重复该输入。")
-    add("- **命名空间文档已在 0.3.0 纠正**：README 与 `--help` 明确 URI 参与匹配；用例 33–35 证明正确 URI 能匹配默认命名空间及不同前缀的等价文档、错 URI 零匹配。设计文档 v3 的旧结论以当前 README 为准。")
-    add("- 本清单只覆盖 `sample/smoke.py` 的 CLI 黑盒用例；Rust 单测/集成测试、fuzz、以及设计文档 §8.3 的两条流式黑盒断言不在此列。")
+    add("- **命名空间文档已在 0.3.0 纠正**：README 与 `--help` 明确 URI 参与匹配；用例 33–35 证明正确 URI 能匹配默认命名空间及不同前缀的等价文档、错 URI 零匹配。当前契约以 `README.md` 与 `docs/cli-design.md` 为准。")
+    add("- 本清单只覆盖 `sample/smoke.py` 的 CLI 黑盒用例；Rust 单测/集成测试与 fuzz 不在此列。")
     add("- 校验清单是否过期：`python sample/export_cases.py --check`（CI 已接入）。")
     add("")
     return "\n".join(out) + "\n"

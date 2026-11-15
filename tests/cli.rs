@@ -14,6 +14,30 @@ fn ux() -> Command {
 }
 
 #[test]
+fn help_documents_path_spec_contract_and_roadmap() {
+    let output = ux()
+        .args(["--help"])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let help = String::from_utf8_lossy(&output.stdout).into_owned();
+    for expected in [
+        "PATH SPEC",
+        "ROADMAP",
+        "{name:re:...}",
+        "{name:glob:...}",
+        "Usage(2) before any directory is opened",
+        "read-only string metadata",
+        "--max-depth is ignored here",
+        "no stable public API is promised",
+        "Input-side BrokenPipe becomes runtime(1) with a diagnostic in 0.4.0",
+    ] {
+        assert!(help.contains(expected), "--help is missing {expected}");
+    }
+}
+
+#[test]
 fn json_to_regex_to_jq_pipeline() {
     ux().args([
         "-e",

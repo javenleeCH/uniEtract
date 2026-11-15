@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """CI gate: shipped docs must match the 0.3.1 CLI contract.
 
-Invoked as a file (not `python -c '...'`) so the same command works under bash
-and pwsh with Chinese paths. Missing required files are a hard failure instead
-of a silently skipped scan, and the NativeHeap fixture count is checked here
-too.
+Invoked as a standalone script (no shell quoting, no rg) so it behaves the
+same under bash and pwsh. Missing required files are a hard failure instead of
+a silently skipped scan, and the NativeHeap fixture count is checked here too.
 """
 
 from pathlib import Path
@@ -16,16 +15,18 @@ DOCS = [
     "README.md",
     "CHANGELOG.md",
     "src/cli.rs",
-    ".trae/documents/统一信息抽取器-cli-设计.md",
-    ".trae/documents/路径匹配模块-设计.md",
+    "docs/cli-design.md",
+    "docs/path-spec-design.md",
 ]
 
 REQUIRED = DOCS + [
     "Cargo.lock",
     "fuzz/Cargo.lock",
     "fuzz/Cargo.toml",
+    "LICENSE",
     ".github/workflows/ci.yml",
     ".github/scripts/check_test_count.py",
+    ".github/scripts/check_fuzz_manifest.py",
     "tests/lib_run.rs",
     "tests/pathspec.rs",
     "tests/pathspec_scenario.rs",
@@ -54,6 +55,14 @@ BANNED_DOCS = (
     "仅输出侧",
     "检测必须覆盖",
     "任何意外 panic 转为",
+    # Design docs describe the finalized implementation; open-issue and
+    # deferred-work wording must not creep back in.
+    "遗留问题",
+    "已知缺口",
+    "后续关注",
+    "待后续",
+    "待实施",
+    "候选",
 )
 
 BANNED_ALL = (

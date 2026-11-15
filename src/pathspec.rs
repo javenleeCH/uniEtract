@@ -1,4 +1,4 @@
-//! Structured path matching (`--path-spec`), design §4 / §5.
+//! Structured path matching (`--path-spec`); see `docs/path-spec-design.md`.
 //!
 //! A spec is a `/`-separated sequence of segments. Each segment is a sequence
 //! of literal fragments and explicit `{name:re:...}` / `{name:glob:...}`

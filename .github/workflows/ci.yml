@@ -17,10 +17,9 @@ jobs:
       - name: MSRV build with frozen dependencies
         run: cargo build --locked
       - name: MSRV tests with frozen dependencies
-        run: cargo test --locked
+        run: cargo test --all-targets --locked
       - name: Fuzz manifest resolves under --locked
-        run: >-
-          python -c 'import subprocess; subprocess.run(["cargo", "metadata", "--manifest-path", "fuzz/Cargo.toml", "--locked", "--format-version", "1"], check=True, stdout=subprocess.DEVNULL)'
+        run: python .github/scripts/check_fuzz_manifest.py
 
   verify:
     strategy:
@@ -30,7 +29,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Pin the toolchain: `-D warnings` on a moving `stable` would fail on
+      # unrelated new lints. Rust 1.88 is both the MSRV and the CI baseline.
+      - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: rustfmt, clippy
       - uses: actions/setup-python@v5
@@ -46,15 +47,11 @@ jobs:
       - name: Test inventory matches the documented count
         run: python .github/scripts/check_test_count.py
       - name: Contract docs, required files and fixture tree
-        # A standalone Python script (not rg, not `python -c` with Chinese
-        # paths) behaves identically under bash and pwsh; a missing document is
-        # a hard failure instead of a zero-match no-op.
+        # Standalone Python scripts (no rg, no `python -c`) behave identically
+        # under bash and pwsh; a missing file is a hard failure, not a no-op.
         run: python .github/scripts/check_contract_docs.py
       - name: Fuzz manifest resolves under --locked
-        run: >-
-          python -c 'import subprocess; subprocess.run(["cargo", "metadata", "--manifest-path", "fuzz/Cargo.toml", "--locked", "--format-version", "1"], check=True, stdout=subprocess.DEVNULL)'
-      - name: Distribution metadata
-        run: python -c "from pathlib import Path; assert Path('LICENSE').is_file(), 'LICENSE is missing'"
+        run: python .github/scripts/check_fuzz_manifest.py
       - name: Release build
         run: cargo build --release --locked
       - name: Sample smoke

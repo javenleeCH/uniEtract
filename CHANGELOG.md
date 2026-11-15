@@ -29,8 +29,10 @@
 - 新增 `tests/pathspec_scenario.rs`（8 项）与 `tests/fixtures/pathmatch/data`（12 个 NativeHeap 夹具）：夹具字节、非法 spec、目录尾不递归、4/12 精确命中、02-30 排除、段级剪枝、3 条 pss 抽取与 `--with-source`、captures 只读与 `--quiet` 对照。
 - 新增 `tests/lib_run.rs`（6 项）：库直调 stdout 纯净、输出侧 BrokenPipe=0、`Runtime` 包裹读失败=1、**输入侧裸 IO BrokenPipe=0 的如实负向用例**、usage 结构化、panic 收敛为 runtime；用全局 Mutex 串行化 panic hook 安装。
 - 旧 Python 校验原型下线，夹具与断言以 Rust 测试为单一真相；`scenarios/pathmatch/generate.py` 改为写入 `tests/fixtures/pathmatch/data`。
-- CI：需要解析依赖的 cargo 步骤一律 `--locked`（`cargo fmt` 不适用）；新增 Rust 1.88 MSRV job（含 `cargo test --locked`）、`fuzz/Cargo.toml` 的 `cargo metadata --locked`（去掉 `--no-deps`）、两个独立门禁脚本 `.github/scripts/check_contract_docs.py`（显式断言必需文件存在、分组扫描过期文案、校验 12 个夹具）与 `.github/scripts/check_test_count.py`（`-- --list` 断言 157 项测试）；删除与 `--all-targets` 重复的 agent 测试步骤。
-- 当前 Rust 测试共 **157 项**（86 单测 + 21 Agent 契约 + 26 CLI + 3 兼容 + 6 库直调 + 7 pathspec + 8 场景），在 Rust 1.88 与 stable 下全部通过。
+- 设计文档按当前实现重写到 `docs/cli-design.md` 与 `docs/path-spec-design.md`；`.trae/` 目录删除，README 与 CI 门禁的引用同步指向 `docs/`。
+- CI：需要解析依赖的 cargo 步骤一律 `--locked`（`cargo fmt` 不适用）；Rust 1.88 MSRV job 含 `cargo test --all-targets --locked`；工具链固定为 1.88，避免 `-D warnings` 受新 lint 影响；三个独立门禁脚本 `.github/scripts/check_contract_docs.py`（必需文件断言、分组扫描过期文案、校验 12 个夹具）、`.github/scripts/check_test_count.py`（`-- --list` 汇总行统计）、`.github/scripts/check_fuzz_manifest.py`（`cargo metadata --locked`，去掉 `--no-deps`）；全部 `python -c` 内联移除，bash 与 pwsh 行为一致；删除与 `--all-targets` 重复的 agent 测试步骤。
+- `tests/cli.rs` 新增 `--help` 的 PATH SPEC / ROADMAP 文案正向回归断言。
+- 当前 Rust 测试共 **158 项**（86 单测 + 21 Agent 契约 + 27 CLI + 3 兼容 + 6 库直调 + 7 pathspec + 8 场景），在 Rust 1.88 下全部通过。
 
 ### 0.4.0 时间表（已定稿）
 

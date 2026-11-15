@@ -105,17 +105,21 @@ ux --path-spec 'data/{ts:re:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}}_SRRG/render_ser
 
 ## 面向开发者与 Agent 的稳定契约
 
-CLI 会被脚本、CI 与 LLM 生成的命令直接调用，因此下列行为是**稳定契约**：
+CLI 会被脚本、CI 与 LLM 生成的命令直接调用。下列行为是**跨版本稳定保证**：
 
 | 关注点 | 保证 |
 |---|---|
-| 契约边界 | 「保证」列只承诺跨版本不变的行为；标为「当前行为」的条目会在下个 minor 变更，不纳入长期稳定契约 |
 | stdout | 只承载数据；`-O jsonl` 每行一个紧凑 JSON，`-O json` 单个数组，`-O text` 原样文本；`--list` 输出输入清单 JSONL |
 | stderr | 每条诊断一行；`--error-format json` 时每行都是可解析的 JSON 对象；`--quiet` 压制 warning 但错误必出 |
 | 退出码 | `0` 成功（含零匹配）、`1` 运行期错误、`2` 参数/编译错误；`Runtime(String)` 包裹的读错误为 1。`catch_unwind` **无条件**把主线程 unwind panic 收敛为 `1` 的结构化 `runtime` 诊断；`--error-format json` 模式额外安装空 panic hook，保证 stderr 只有结构化诊断。库直调 `run()` 同样收敛，但不继承该进程级 hook，调用方需自行管理 |
-| 当前行为（非长期保证） | 0.3.x 下 `AppError::Io(BrokenPipe)` 一律为 0，含输入侧裸 IO 错误；**0.4.0 起输入侧改为 `runtime(1)` 并输出诊断**。见「0.4.0 时间表」与「已知限制」中「退出码 0 不证明输入被完整读取」 |
 | 顺序 | 文件按归一化相对路径字典序串行处理；`--list` 顺序与实际处理顺序一致，多次调用字节级稳定 |
 | 输入 | 无路径默认读 stdin；stdin 是终端且未显式给 `-` 时返回 `Usage(2)` 并提示，避免自动化进程挂起；`--no-stdin` 可彻底禁用 |
+
+以下条目是**当前版本行为，0.4.0 会变更**，不纳入长期稳定契约：
+
+| 关注点 | 当前行为（0.3.x） | 0.4.0 |
+|---|---|---|
+| BrokenPipe | `AppError::Io(BrokenPipe)` 一律为 0，含输入侧裸 IO 错误，且不写诊断 | 输入侧改为 `runtime(1)` 并输出诊断；见「0.4.0 时间表」与「已知限制」中「退出码 0 不证明输入被完整读取」 |
 
 结构化诊断示例（stderr，每行一个对象）：
 
@@ -149,7 +153,7 @@ ux --quiet --error-format json -f jsonl -e 'jq(select(.level == "ERROR"))' .\log
 | `binary input skipped` / `incompatible` | 文件被跳过 | 按需加 `--force-text` 或调整首阶段 |
 | `assumed GB18030` | 编码回退 | 显式 `--encoding` 更稳 |
 
-`--quiet` 会隐藏这些 warning：只关心数据且依赖退出码时可加；需要区分「零匹配」与「文件被跳过」时不要加。**`rc=0` + stdout 空 + stderr 空不能证明输入被完整读取**：输入侧 BrokenPipe 也是这个组合，详见「已知限制」的「退出码 0 不证明输入被完整读取」。
+`--quiet` 会隐藏这些 warning：只关心数据且依赖退出码时可加（**管道输入除外**，见下）；需要区分「零匹配」与「文件被跳过」时不要加。**`rc=0` + stdout 空 + stderr 空不能证明输入被完整读取**：输入侧 BrokenPipe 也是这个组合，详见「已知限制」的「退出码 0 不证明输入被完整读取」；管道输入场景应改用文件输入，不要靠 `--quiet` + 退出码判断完整性。
 
 容易误判的点：
 
@@ -206,7 +210,7 @@ python sample/export_cases.py --check
 - `--path-spec` 只做段级结构匹配：不做跨段通配、不做基于 captures 的排序，也不提供 `--sort` / `--max-files` 或提取提示（hint）。manpage 未随发行提供，可用 `--help` 与 `--completions` 替代。
 - **退出码 0 不证明输入被完整读取**：0.3.1 按错误变体判定 BrokenPipe，输入侧管道破裂（首次 `fill_buf` / 逐行读）同样返回 0 且 stderr 为空。Agent / 脚本不能只靠 `rc=0` 判断输入已读完；需要强保证时改用文件输入。按输入/输出侧区分已列入 0.4.0 必修项。
 
-完整契约与 ADR 见 `.trae/documents/统一信息抽取器-cli-设计.md`（v3，已按 0.3.x 现状同步）；其中的 `--ns` 结论以本 README 与 `--help` 为准（URI 参与匹配）。路径匹配的段级剪枝与夹具证据见 `.trae/documents/路径匹配模块-设计.md`（已实现）。变更记录见 `CHANGELOG.md`。
+完整契约与 ADR 见 `docs/cli-design.md`；路径匹配的段级剪枝与夹具证据见 `docs/path-spec-design.md`；变更记录与版本路线见 `CHANGELOG.md`。
 
 ## 0.4.0 时间表（已定稿）
 
