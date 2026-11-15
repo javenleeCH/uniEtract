@@ -20,6 +20,7 @@ pub struct OutputSink<'writer> {
     options: OutputOptions,
     aggregate: Vec<JsonValue>,
     emitted: u64,
+    abandoned: bool,
 }
 
 impl<'writer> OutputSink<'writer> {
@@ -36,12 +37,13 @@ impl<'writer> OutputSink<'writer> {
             options,
             aggregate: Vec::new(),
             emitted: 0,
+            abandoned: false,
         }
     }
 
     pub fn emit(&mut self, item: Item<'_>) -> Result<(), AppError> {
         if self.options.max_results > 0 && self.emitted >= self.options.max_results {
-            return Err(AppError::Runtime(format!(
+            return Err(AppError::Limit(format!(
                 "--max-results ({}) exceeded: refusing to silently truncate output",
                 self.options.max_results
             )));
@@ -70,8 +72,23 @@ impl<'writer> OutputSink<'writer> {
         self.flush_if_line_buffered()
     }
 
+    /// Discard a pending `-O json` aggregate. A partial array would look like a
+    /// complete statistic, so a failed run must never write one.
+    pub fn abandon(&mut self) {
+        self.aggregate.clear();
+        self.abandoned = true;
+    }
+
+    /// Flush already-emitted records without finalizing an aggregate. Used when
+    /// a hard limit stops the run: a partial `-O json` array must never be
+    /// written, but jsonl/text records produced so far should stay visible.
+    pub fn flush(&mut self) -> Result<(), AppError> {
+        self.writer.flush()?;
+        Ok(())
+    }
+
     pub fn finish(&mut self) -> Result<(), AppError> {
-        if self.mode == OutputMode::Json {
+        if self.mode == OutputMode::Json && !self.abandoned {
             let value = JsonValue::Array(std::mem::take(&mut self.aggregate));
             write_json_line(&mut self.writer, &value, !self.options.compact)?;
         }
@@ -183,9 +200,30 @@ mod tests {
         );
         sink.emit(Item::new(Value::Data(json!(1)), Origin::default()))
             .unwrap();
+        let error = sink
+            .emit(Item::new(Value::Data(json!(2)), Origin::default()))
+            .unwrap_err();
+        assert!(error.is_limit());
+        assert_eq!(error.exit_code(), 1);
+    }
+
+    #[test]
+    fn abandon_discards_partial_json_aggregate() {
+        let mut bytes = Vec::new();
+        let mut sink = OutputSink::new(
+            &mut bytes,
+            OutputMode::Json,
+            false,
+            OutputOptions::default(),
+        );
+        sink.emit(Item::new(Value::Data(json!(1)), Origin::default()))
+            .unwrap();
+        sink.abandon();
+        sink.finish().unwrap();
+        drop(sink);
         assert!(
-            sink.emit(Item::new(Value::Data(json!(2)), Origin::default()))
-                .is_err()
+            bytes.is_empty(),
+            "a failed run must not emit a partial array"
         );
     }
 

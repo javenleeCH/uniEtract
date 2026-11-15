@@ -389,10 +389,10 @@ def render(cases):
             add(f"- stderr 必须包含：{inline(stderr)}")
         add("")
 
-    add("## 6. 已知待修项 / 不在本清单覆盖范围")
+    add("## 6. 已修复事项与清单边界")
     add("")
-    add("- **未注册前缀会 panic**：`xpath(\"//x:book\")` 在 `sxd-xpath 0.4.2` 内部 panic（rc=101），按 P2 应为 `Query(2)`。刻意没有把 panic 写成预期结果，因此本清单不覆盖该输入。")
-    add("- **文档与实测相反**：README「已知限制」、设计文档 §6.4/§10 与 `--ns` 帮助文案仍称「只解析前缀、不按 URI 匹配」，但用例 33–35 证明正确 URI 能匹配默认命名空间及不同前缀的等价文档、错 URI 零匹配（用例 05 只是常规同名前缀通路）。文档待单独一轮纠正。")
+    add("- **未注册前缀已在 0.3.0 修复**：`xpath(\"//x:book\")` 现在于编译期返回 `Query(2)` 并提示 `--ns PREFIX=URI`，不再触发 `sxd-xpath` panic（rc=101）；由 `tests/agent.rs` 覆盖，本清单不重复该输入。")
+    add("- **命名空间文档已在 0.3.0 纠正**：README 与 `--help` 明确 URI 参与匹配；用例 33–35 证明正确 URI 能匹配默认命名空间及不同前缀的等价文档、错 URI 零匹配。设计文档 v3 的旧结论以当前 README 为准。")
     add("- 本清单只覆盖 `sample/smoke.py` 的 CLI 黑盒用例；Rust 单测/集成测试、fuzz、以及设计文档 §8.3 的两条流式黑盒断言不在此列。")
     add("- 校验清单是否过期：`python sample/export_cases.py --check`（CI 已接入）。")
     add("")

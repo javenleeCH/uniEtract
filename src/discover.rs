@@ -1,21 +1,28 @@
 use std::collections::HashSet;
-use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use glob::Pattern as GlobPattern;
 use nucleo_matcher::{Config, Matcher, Utf32Str};
+use serde_json::Value as JsonValue;
 use walkdir::{DirEntry, WalkDir};
 
 use crate::cli::Cli;
+use crate::diagnostic::Reporter;
 use crate::error::AppError;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Input {
     Stdin,
     File(PathBuf),
+    /// A file selected by `--path-spec`, with its named captures attached.
+    Matched {
+        path: PathBuf,
+        captures: Arc<JsonValue>,
+    },
 }
 
-const DEFAULT_IGNORED_DIRS: &[&str] = &[
+pub(crate) const DEFAULT_IGNORED_DIRS: &[&str] = &[
     ".git",
     ".hg",
     ".svn",
@@ -31,7 +38,10 @@ const DEFAULT_IGNORED_DIRS: &[&str] = &[
 /// Ordering contract (P1): command-line argument order is preserved; within each
 /// argument, files are sorted lexicographically by their normalized relative path.
 /// `-` is inserted at its argument position and never sorted.
-pub fn discover(cli: &Cli, stderr: &mut dyn Write) -> Result<Vec<Input>, AppError> {
+pub fn discover(cli: &Cli, reporter: &mut Reporter<'_>) -> Result<Vec<Input>, AppError> {
+    if let Some(spec) = &cli.path_spec {
+        return crate::pathspec::discover(spec, cli, reporter);
+    }
     if cli.paths.is_empty() {
         return Ok(vec![Input::Stdin]);
     }
@@ -58,7 +68,7 @@ pub fn discover(cli: &Cli, stderr: &mut dyn Write) -> Result<Vec<Input>, AppErro
             any_matched = true;
             continue;
         }
-        let candidates = expand(spec, cli, &excludes, stderr)?;
+        let candidates = expand(spec, cli, &excludes, reporter)?;
         if candidates.is_empty() {
             continue;
         }
@@ -78,7 +88,7 @@ pub fn discover(cli: &Cli, stderr: &mut dyn Write) -> Result<Vec<Input>, AppErro
     }
 
     if !any_matched {
-        let _ = writeln!(stderr, "ux: no input files matched");
+        reporter.warn("no input files matched");
     }
     Ok(inputs)
 }
@@ -87,13 +97,13 @@ fn expand(
     spec: &str,
     cli: &Cli,
     excludes: &[GlobPattern],
-    stderr: &mut dyn Write,
+    reporter: &mut Reporter<'_>,
 ) -> Result<Vec<(PathBuf, String)>, AppError> {
     let path = Path::new(spec);
     if has_glob_metacharacter(spec) {
         expand_glob(spec, excludes)
     } else if path.is_dir() {
-        walk_directory(path, cli, excludes, stderr)
+        walk_directory(path, cli, excludes, reporter)
     } else if path.exists() {
         let relative = path
             .file_name()
@@ -155,7 +165,7 @@ fn walk_directory(
     directory: &Path,
     cli: &Cli,
     excludes: &[GlobPattern],
-    stderr: &mut dyn Write,
+    reporter: &mut Reporter<'_>,
 ) -> Result<Vec<(PathBuf, String)>, AppError> {
     let depth = cli
         .max_depth
@@ -185,11 +195,11 @@ fn walk_directory(
                     .path()
                     .map(|path| path.display().to_string())
                     .unwrap_or_else(|| "<unknown>".to_owned());
-                let message = format!("ux: warning: cannot traverse `{location}`: {error}");
+                let message = format!("cannot traverse `{location}`: {error}");
                 if cli.strict {
                     return Err(AppError::Runtime(message));
                 }
-                let _ = writeln!(stderr, "{message}");
+                reporter.warn(&message);
             }
         }
     }
@@ -211,7 +221,7 @@ fn prune(entry: &DirEntry, base: &Path, cli: &Cli, excludes: &[GlobPattern]) -> 
     is_excluded(&relative, excludes)
 }
 
-fn is_excluded(relative: &str, excludes: &[GlobPattern]) -> bool {
+pub(crate) fn is_excluded(relative: &str, excludes: &[GlobPattern]) -> bool {
     excludes.iter().any(|pattern| pattern.matches(relative))
 }
 
@@ -225,7 +235,7 @@ fn normalize_relative(path: &Path) -> String {
 /// `fuzzy_match` already requires every needle character to be present in order,
 /// so a positive score is the documented "hit" condition. Scores are used only
 /// for filtering; output order stays lexicographic for reproducibility (P1).
-fn fuzzy_hit(matcher: &mut Matcher, haystack: &str, needle: &str) -> bool {
+pub(crate) fn fuzzy_hit(matcher: &mut Matcher, haystack: &str, needle: &str) -> bool {
     let mut haystack_buf = Vec::new();
     let mut needle_buf = Vec::new();
     let haystack = Utf32Str::new(haystack, &mut haystack_buf);
@@ -238,12 +248,22 @@ fn fuzzy_hit(matcher: &mut Matcher, haystack: &str, needle: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::ErrorFormat;
     use std::fs;
     use tempfile::tempdir;
 
     fn cli(args: &[&str]) -> Cli {
         use clap::Parser;
         Cli::try_parse_from(args).unwrap()
+    }
+
+    fn discover_for_test(cli: &Cli) -> (Vec<Input>, String) {
+        let mut stderr = Vec::new();
+        let inputs = {
+            let mut reporter = Reporter::new(&mut stderr, ErrorFormat::Text, false);
+            discover(cli, &mut reporter).unwrap()
+        };
+        (inputs, String::from_utf8(stderr).unwrap())
     }
 
     fn write(dir: &Path, relative: &str, content: &str) {
@@ -259,12 +279,13 @@ mod tests {
         write(dir.path(), "a.json", "{}");
         write(dir.path(), "sub/c.json", "{}");
         let cli = cli(&["ux", "-e", "text()", dir.path().to_str().unwrap()]);
-        let mut stderr = Vec::new();
-        let inputs = discover(&cli, &mut stderr).unwrap();
+        let (inputs, _) = discover_for_test(&cli);
         let names: Vec<_> = inputs
             .iter()
             .map(|input| match input {
-                Input::File(path) => path.file_name().unwrap().to_string_lossy().into_owned(),
+                Input::File(path) | Input::Matched { path, .. } => {
+                    path.file_name().unwrap().to_string_lossy().into_owned()
+                }
                 Input::Stdin => "<stdin>".to_owned(),
             })
             .collect();
@@ -278,11 +299,12 @@ mod tests {
         write(dir.path(), "target/generated.txt", "x");
         write(dir.path(), ".git/config", "x");
         let cli = cli(&["ux", "-e", "text()", dir.path().to_str().unwrap()]);
-        let mut stderr = Vec::new();
-        let inputs = discover(&cli, &mut stderr).unwrap();
+        let (inputs, _) = discover_for_test(&cli);
         assert_eq!(inputs.len(), 1);
         match &inputs[0] {
-            Input::File(path) => assert!(path.ends_with("keep.txt")),
+            Input::File(path) | Input::Matched { path, .. } => {
+                assert!(path.ends_with("keep.txt"));
+            }
             Input::Stdin => panic!("unexpected stdin input"),
         }
     }
@@ -302,8 +324,7 @@ mod tests {
             "top.*",
             dir.path().to_str().unwrap(),
         ]);
-        let mut stderr = Vec::new();
-        let inputs = discover(&cli, &mut stderr).unwrap();
+        let (inputs, _) = discover_for_test(&cli);
         assert!(inputs.is_empty());
     }
 
@@ -330,8 +351,7 @@ mod tests {
         write(dir.path(), "a.json", "{}");
         let pattern = format!("{}/*.json", dir.path().to_str().unwrap());
         let cli = cli(&["ux", "-e", "text()", &pattern]);
-        let mut stderr = Vec::new();
-        let inputs = discover(&cli, &mut stderr).unwrap();
+        let (inputs, _) = discover_for_test(&cli);
         assert_eq!(inputs.len(), 2);
     }
 
@@ -340,13 +360,22 @@ mod tests {
         let dir = tempdir().unwrap();
         let pattern = format!("{}/*.none", dir.path().to_str().unwrap());
         let cli = cli(&["ux", "-e", "text()", &pattern]);
-        let mut stderr = Vec::new();
-        let inputs = discover(&cli, &mut stderr).unwrap();
+        let (inputs, stderr) = discover_for_test(&cli);
         assert!(inputs.is_empty());
-        assert!(
-            String::from_utf8(stderr)
-                .unwrap()
-                .contains("no input files matched")
-        );
+        assert!(stderr.contains("no input files matched"));
+    }
+
+    #[test]
+    fn quiet_suppresses_discovery_warning() {
+        let dir = tempdir().unwrap();
+        let pattern = format!("{}/*.none", dir.path().to_str().unwrap());
+        let cli = cli(&["ux", "-e", "text()", &pattern]);
+        let mut stderr = Vec::new();
+        {
+            let mut reporter = Reporter::new(&mut stderr, ErrorFormat::Text, true);
+            let inputs = discover(&cli, &mut reporter).unwrap();
+            assert!(inputs.is_empty());
+        }
+        assert!(stderr.is_empty());
     }
 }

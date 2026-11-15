@@ -1,12 +1,14 @@
 use std::borrow::Cow;
-use std::io::{BufRead, Cursor, Read, Write};
+use std::io::{BufRead, Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
 use ::regex::Regex;
 use encoding_rs::Encoding as TextEncoding;
+use serde_json::Value as JsonValue;
 
 use crate::cli::{Cli, Encoding, InputFormat};
+use crate::diagnostic::Reporter;
 use crate::error::AppError;
 
 const UTF8_BOM: &[u8] = &[0xEF, 0xBB, 0xBF];
@@ -20,6 +22,7 @@ pub struct InputSource<'reader> {
     pub path: Option<Arc<PathBuf>>,
     pub max_input_size: u64,
     pub max_record_size: u64,
+    pub captures: Option<Arc<JsonValue>>,
 }
 
 pub enum Opened<'reader> {
@@ -32,8 +35,9 @@ impl<'reader> InputSource<'reader> {
     pub fn open(
         mut reader: Box<dyn BufRead + 'reader>,
         path: Option<Arc<PathBuf>>,
+        captures: Option<Arc<JsonValue>>,
         cli: &Cli,
-        stderr: &mut dyn Write,
+        reporter: &mut Reporter<'_>,
     ) -> Result<Opened<'reader>, AppError> {
         let label = path
             .as_ref()
@@ -43,7 +47,7 @@ impl<'reader> InputSource<'reader> {
         let prefix = reader.fill_buf()?.to_vec();
         let (encoding, bom_length, assumed) = resolve_encoding(&prefix, cli.encoding, &label)?;
         if let Some(name) = assumed {
-            let _ = writeln!(stderr, "ux: `{label}`: assumed {name}");
+            reporter.warn(&format!("`{label}`: assumed {name}"));
         }
 
         if !cli.force_text && looks_binary(&prefix, encoding) {
@@ -58,7 +62,7 @@ impl<'reader> InputSource<'reader> {
                 )));
             }
             return Ok(Opened::Skipped(format!(
-                "ux: warning: `{label}`: binary input skipped (use --force-text to override)"
+                "`{label}`: binary input skipped (use --force-text to override)"
             )));
         }
 
@@ -66,9 +70,36 @@ impl<'reader> InputSource<'reader> {
         let (final_reader, sniff): (Box<dyn BufRead + 'reader>, Vec<u8>) = if transcoding {
             let mut bytes = prefix.clone();
             reader.consume(prefix.len());
-            reader
-                .read_to_end(&mut bytes)
-                .map_err(|error| AppError::Runtime(format!("`{label}`: cannot read: {error}")))?;
+            // Non-UTF-8 inputs must be decoded in memory. Bound the raw read as
+            // well: previously read_to_end ran before any size check, so
+            // --max-input-size only applied to the decoded text (OOM risk).
+            if cli.max_input_size > 0 {
+                let limit = cli.max_input_size;
+                if bytes.len() as u64 > limit {
+                    return Err(AppError::Runtime(format!(
+                        "`{label}`: input exceeds --max-input-size ({limit}) bytes"
+                    )));
+                }
+                let mut chunk = [0_u8; 8192];
+                loop {
+                    let read = reader.read(&mut chunk).map_err(|error| {
+                        AppError::Runtime(format!("`{label}`: cannot read: {error}"))
+                    })?;
+                    if read == 0 {
+                        break;
+                    }
+                    bytes.extend_from_slice(&chunk[..read]);
+                    if bytes.len() as u64 > limit {
+                        return Err(AppError::Runtime(format!(
+                            "`{label}`: input exceeds --max-input-size ({limit}) bytes"
+                        )));
+                    }
+                }
+            } else {
+                reader.read_to_end(&mut bytes).map_err(|error| {
+                    AppError::Runtime(format!("`{label}`: cannot read: {error}"))
+                })?;
+            }
             let decoded = decode(&bytes[bom_length.min(bytes.len())..], encoding, &label)?;
             let normalized = normalize_xml_declaration(&decoded);
             let end = normalized.len().min(8192);
@@ -90,12 +121,16 @@ impl<'reader> InputSource<'reader> {
             cli.format
         };
 
+        // Transcoded bytes are already bounded by --max-input-size before
+        // decoding. Decoding can expand them (GB18030: 2 bytes -> 3 UTF-8
+        // bytes), so applying the same cap again would reject valid files.
         Ok(Opened::Ready(InputSource {
             reader: final_reader,
             format,
             path,
-            max_input_size: cli.max_input_size,
+            max_input_size: if transcoding { 0 } else { cli.max_input_size },
             max_record_size: cli.max_record_size,
+            captures,
         }))
     }
 
@@ -275,6 +310,7 @@ pub(crate) fn detect_format(path: Option<&Path>, prefix: &[u8]) -> InputFormat {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::ErrorFormat;
     use clap::Parser;
 
     fn cli(args: &[&str]) -> Cli {
@@ -284,13 +320,17 @@ mod tests {
     fn open(bytes: &[u8], args: &[&str]) -> (InputSource<'static>, Vec<u8>) {
         let cli = cli(args);
         let mut stderr = Vec::new();
-        let opened = InputSource::open(
-            Box::new(Cursor::new(bytes.to_vec())),
-            None,
-            &cli,
-            &mut stderr,
-        )
-        .unwrap();
+        let opened = {
+            let mut reporter = Reporter::new(&mut stderr, ErrorFormat::Text, false);
+            InputSource::open(
+                Box::new(Cursor::new(bytes.to_vec())),
+                None,
+                None,
+                &cli,
+                &mut reporter,
+            )
+            .unwrap()
+        };
         match opened {
             Opened::Ready(mut source) => {
                 let mut all = Vec::new();
@@ -321,14 +361,73 @@ mod tests {
     fn utf8_with_nul_is_binary() {
         let cli = cli(&["ux", "-e", "text()"]);
         let mut stderr = Vec::new();
-        let opened = InputSource::open(
-            Box::new(Cursor::new(b"a\0b".to_vec())),
-            None,
-            &cli,
-            &mut stderr,
-        )
-        .unwrap();
+        let opened = {
+            let mut reporter = Reporter::new(&mut stderr, ErrorFormat::Text, false);
+            InputSource::open(
+                Box::new(Cursor::new(b"a\0b".to_vec())),
+                None,
+                None,
+                &cli,
+                &mut reporter,
+            )
+            .unwrap()
+        };
         assert!(matches!(opened, Opened::Skipped(_)));
+    }
+
+    #[test]
+    fn transcoding_respects_max_input_size() {
+        let mut bytes = vec![0xFF, 0xFE];
+        for byte in "hello world"
+            .encode_utf16()
+            .flat_map(|unit| unit.to_le_bytes())
+        {
+            bytes.push(byte);
+        }
+        let cli = cli(&[
+            "ux",
+            "-e",
+            "text()",
+            "--encoding",
+            "utf-16le",
+            "--max-input-size",
+            "4",
+        ]);
+        let mut stderr = Vec::new();
+        let error = {
+            let mut reporter = Reporter::new(&mut stderr, ErrorFormat::Text, false);
+            InputSource::open(
+                Box::new(Cursor::new(bytes)),
+                None,
+                None,
+                &cli,
+                &mut reporter,
+            )
+            .err()
+            .expect("oversized transcoded input must be rejected")
+        };
+        assert_eq!(error.exit_code(), 1);
+        assert!(error.to_string().contains("--max-input-size"));
+    }
+
+    #[test]
+    fn quiet_suppresses_encoding_warning() {
+        let bytes = [0xD6, 0xD0, 0xCE, 0xC4];
+        let cli = cli(&["ux", "-e", "text()", "--encoding", "auto"]);
+        let mut stderr = Vec::new();
+        {
+            let mut reporter = Reporter::new(&mut stderr, ErrorFormat::Text, true);
+            let opened = InputSource::open(
+                Box::new(Cursor::new(bytes.to_vec())),
+                None,
+                None,
+                &cli,
+                &mut reporter,
+            )
+            .unwrap();
+            assert!(matches!(opened, Opened::Ready(_)));
+        }
+        assert!(stderr.is_empty());
     }
 
     #[test]

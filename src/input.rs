@@ -17,7 +17,7 @@ pub fn process_source(
     let format = source.format;
     let max_input_size = source.max_input_size;
     let max_record_size = source.max_record_size;
-    let base = Origin::new(source.path.clone(), 1);
+    let base = Origin::new(source.path.clone(), 1).with_captures(source.captures.clone());
     let reader = source.reader();
     match format {
         InputFormat::Json => process_json(reader, &base, max_input_size, sink),
@@ -70,7 +70,7 @@ fn process_jsonl(
             continue;
         }
         record += 1;
-        let origin = Origin::at_line(&Origin::new(base.path.clone(), record), line_number);
+        let origin = base.with_record(record).at_line(line_number);
         let value = serde_json::from_str(&line).map_err(|error| {
             AppError::Runtime(format!("{origin}: invalid JSONL record: {error}"))
         })?;
@@ -95,7 +95,7 @@ fn process_text(
     // Empty lines are records too (§5.6), so they are emitted, not skipped.
     while let Some(line) = next_line(reader, record_limit, base, line_number + 1)? {
         line_number += 1;
-        let origin = Origin::at_line(&Origin::new(base.path.clone(), line_number), line_number);
+        let origin = base.with_record(line_number).at_line(line_number);
         emit(Value::Text(line), &origin, sink)?;
     }
     Ok(())
@@ -109,7 +109,7 @@ fn process_yaml(
 ) -> Result<(), AppError> {
     let source = read_utf8_limited(reader, base, limit)?;
     for (index, document) in serde_yaml_ng::Deserializer::from_str(&source).enumerate() {
-        let origin = Origin::new(base.path.clone(), index as u64 + 1);
+        let origin = base.with_record(index as u64 + 1);
         let yaml = serde_yaml_ng::Value::deserialize(document)
             .map_err(|error| AppError::Runtime(format!("{origin}: invalid YAML: {error}")))?;
         let value = yaml_to_json(yaml)
@@ -217,7 +217,7 @@ fn process_csv(
     }
 
     for (index, record) in csv.records().enumerate() {
-        let origin = Origin::new(base.path.clone(), index as u64 + 1);
+        let origin = base.with_record(index as u64 + 1);
         let record = record.map_err(|error| {
             AppError::Runtime(format!("{origin}: invalid {label} record: {error}"))
         })?;

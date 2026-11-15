@@ -19,16 +19,16 @@ Fixture layout:
 
 Exit code: 0 when all cases pass, 1 on any mismatch, 2 on setup failure.
 
-Known issues deliberately NOT asserted here (see the design doc's open
-items and the project work log):
-  * xpath("//x:book") with an unregistered prefix panics inside
-    sxd-xpath 0.4.2 (rc=101, "No namespace for prefix"). It should be a
-    Query(2) error instead; do not encode a panic as expected behaviour.
-  * The design doc / --ns help text claim namespace URIs are not matched.
-    The `default-ns-with-uri` and `prefixed-same-uri` cases below show the
+Previously known issues, fixed in 0.3.0 (kept here so reviewers know why
+these cases are not asserted as failures):
+  * An unregistered XPath prefix used to panic inside sxd-xpath 0.4.2
+    (rc=101, "No namespace for prefix"). It is now rejected at compile time
+    as Query(2) with a hint to add --ns.
+  * --ns help text used to claim namespace URIs are not matched. The
+    `default-ns-with-uri` and `prefixed-same-uri` cases below show the
     opposite: a correctly bound URI matches default-namespaced and
-    differently-prefixed documents, while a wrong URI does not. The docs
-    need correcting in a separate change.
+    differently-prefixed documents, while a wrong URI does not. The CLI
+    help and README now document URI matching correctly.
 """
 
 import argparse

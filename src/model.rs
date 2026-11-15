@@ -14,11 +14,14 @@ pub trait ItemSink {
     fn accept(&mut self, item: Item<'_>) -> Result<(), AppError>;
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Origin {
     pub path: Option<Arc<PathBuf>>,
     pub line: Option<u64>,
     pub record: u64,
+    /// Named captures from `--path-spec`; emitted as `source.captures`.
+    /// Pure JSON data (never a document-bound `Node`), so I1 holds.
+    pub captures: Option<Arc<JsonValue>>,
 }
 
 impl Origin {
@@ -27,7 +30,23 @@ impl Origin {
             path,
             line: None,
             record,
+            captures: None,
         }
+    }
+
+    /// Reuse this origin for another record in the same input.
+    pub fn with_record(&self, record: u64) -> Self {
+        Self {
+            path: self.path.clone(),
+            line: None,
+            record,
+            captures: self.captures.clone(),
+        }
+    }
+
+    pub fn with_captures(mut self, captures: Option<Arc<JsonValue>>) -> Self {
+        self.captures = captures;
+        self
     }
 
     pub fn at_line(&self, line: u64) -> Self {
@@ -35,6 +54,7 @@ impl Origin {
             path: self.path.clone(),
             line: Some(line),
             record: self.record,
+            captures: self.captures.clone(),
         }
     }
 }
@@ -111,5 +131,8 @@ pub fn source_json(origin: &Origin) -> JsonValue {
         "record".to_owned(),
         JsonValue::Number(Number::from(origin.record)),
     );
+    if let Some(captures) = &origin.captures {
+        source.insert("captures".to_owned(), (**captures).clone());
+    }
     source.into()
 }

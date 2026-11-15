@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.3.0
+
+面向开发者与 AI Agent 的接口面打磨。抽取语义、默认输出格式与既有退出码保持不变。
+
+### 新增
+
+- `--error-format text|json`：stderr 每行一条诊断；JSON 模式输出稳定字段 `code` / `message` / `exit_code`，`eval` 额外带 `stage` / `path` / `line` / `record`，warning 也结构化。
+- `--quiet`（别名 `--silent`）：压制非致命 warning，错误始终输出。
+- `--list`（别名 `--dry-run`）：只做文件发现并在 stdout 输出 JSONL 清单（`type` / `path`），不打开文件、不需要 `-e`，供 Agent 先确认输入集。
+- `--no-stdin`：显式拒绝隐式 stdin 与 `-`，CI/Agent 不会因漏传路径而阻塞。
+- `--completions bash|zsh|fish|powershell|elvish`：生成 shell 补全脚本（新增 `clap_complete`）。
+- 完整 `--help` / `-h`：阶段速查、输入输出说明、Agent 契约、示例、退出码与内存代价提示。
+- `tests/agent.rs`：21 项面向自动化调用者的契约测试（stdout 纯净、结构化 stderr、退出码、清单、补全、限制行为、稳定性）。
+- 分发元数据：`rust-version`、keywords / categories、`LICENSE`；CI 增加 Agent 契约测试与分发元数据检查。
+
+### 修复
+
+- XPath 未绑定前缀不再触发 `sxd-xpath` panic（rc=101）：编译期返回 `Query(2)` 并提示 `--ns PREFIX=URI`。
+- 增加 `catch_unwind` 兜底：任何意外 panic 转为 `runtime` 诊断（退出 1），JSON 模式下 stderr 保持纯净，不再出现 rc=101。
+- `--max-results` 触顶立即终止：不再继续遍历文件、不再重复报错，`-O json` 不输出残缺聚合数组。
+- 失败运行（`-O json`）清空待写聚合，避免输出看似完整统计的部分数组；jsonl / text 已产出的记录保留。
+- 非 UTF-8 转码路径纳入 `--max-input-size`：原始字节读取带上限，避免转码前无界 `read_to_end` 的 OOM 风险；解码后不再二次套用同一上限（GB18030 会膨胀，曾误拒合法文件）。
+- 修正 `--ns` 文档：URI 实际参与文档命名空间匹配，等价 URI 的不同前缀可命中。
+- 无路径且 stdin 为终端时返回 `Usage(2)` 并提示显式输入，避免 Agent 挂起；显式 `-` 仍可交互读取。
+- `sample/CASES.md` 的「已知待修项」更新为已修复说明，与 0.3.0 行为一致。
+- `--help` 固定 `Usage: ux ...`（`bin_name`），Windows 不再显示 `ux.exe`；`--list` 在交互终端且无路径时不再被 stdin 保护误拒（补回归单测）。
+
+### 内部变更
+
+- 新增 `src/diagnostic.rs` 统一收口 stderr；`AppError` 增加 `Limit` 变体、`ErrorCode` 与 `diagnostic()`；`discover` / `InputSource::open` 改由 `Reporter` 输出。
+- `Cargo.toml` 版本升至 0.3.0；`-e` 改为 `Option<String>`，仅 `--list` / `--completions` 时可省略。
+
 ## 0.2.0
 
 按 v3 设计完成阶段 0–6：类型静态化、文件发现、slurp/split 会话聚合、输入卫生、输出收口与端到端测试。

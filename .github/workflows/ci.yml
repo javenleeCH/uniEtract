@@ -25,6 +25,10 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Tests
         run: cargo test --all-targets
+      - name: Agent contract tests
+        run: cargo test --test agent
+      - name: Distribution metadata
+        run: python -c "from pathlib import Path; assert Path('LICENSE').is_file(), 'LICENSE is missing'"
       - name: Release build
         run: cargo build --release
       - name: Sample smoke
