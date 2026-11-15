@@ -282,7 +282,7 @@ fn scenario_7_three_native_heap_pss_values_carry_source_metadata() {
         ])
         .output()
         .unwrap();
-    assert_eq!(output.status.code(), Some(0), "{:?}", output);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let rows: Vec<JsonValue> = inventory_lines(&stdout);
     assert_eq!(rows.len(), 3, "{stdout}");

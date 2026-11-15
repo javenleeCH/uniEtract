@@ -32,6 +32,7 @@
 - 设计文档按当前实现重写到 `docs/cli-design.md` 与 `docs/path-spec-design.md`；`.trae/` 目录删除，README 与 CI 门禁的引用同步指向 `docs/`。
 - CI：需要解析依赖的 cargo 步骤一律 `--locked`（`cargo fmt` 不适用）；Rust 1.88 MSRV job 含 `cargo test --all-targets --locked`；工具链固定为 1.88，避免 `-D warnings` 受新 lint 影响；三个独立门禁脚本 `.github/scripts/check_contract_docs.py`（必需文件断言、分组扫描过期文案、校验 12 个夹具）、`.github/scripts/check_test_count.py`（`-- --list` 汇总行统计）、`.github/scripts/check_fuzz_manifest.py`（`cargo metadata --locked`，去掉 `--no-deps`）；全部 `python -c` 内联移除，bash 与 pwsh 行为一致；删除与 `--all-targets` 重复的 agent 测试步骤。
 - `tests/cli.rs` 新增 `--help` 的 PATH SPEC / ROADMAP 文案正向回归断言。
+- 修复 GitHub CI：Rust 1.88 clippy 的 `uninlined_format_args` 会让 `tests/pathspec.rs` / `tests/pathspec_scenario.rs` 的 `assert_eq!` 在 `-D warnings` 下失败；两处改用内联格式参数。README 补上 `cargo +1.88.0 ...` 的本地同工具链复现命令。
 - 当前 Rust 测试共 **158 项**（86 单测 + 21 Agent 契约 + 27 CLI + 3 兼容 + 6 库直调 + 7 pathspec + 8 场景），在 Rust 1.88 下全部通过。
 
 ### 0.4.0 时间表（已定稿）

@@ -77,7 +77,7 @@ fn path_spec_selects_exactly_the_conforming_files_and_exposes_captures() {
         ])
         .output()
         .unwrap();
-    assert_eq!(output.status.code(), Some(0), "{:?}", output);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let lines: Vec<_> = stdout.lines().collect();
     assert_eq!(lines.len(), 2, "unexpected output: {stdout}");

@@ -196,6 +196,14 @@ python sample/export_cases.py --check
 
 `smoke.py` 通过 subprocess 直接调用 `ux`（不经过 shell），因此不受 MSYS2 的 `//a` 路径转换影响；CI 在 `cargo build --release` 之后自动运行它。`CASES.md` 里的 bash 命令在 Git Bash 下执行前需 `export MSYS2_ARG_CONV_EXCL='*'`，清单内已注明。
 
+CI 固定 Rust 1.88（含 rustfmt / clippy）。本机若是更新的 stable，某些 lint 只在 1.88 报（例如 `clippy::uninlined_format_args`），因此提交前用同一工具链复现门禁：
+
+```powershell
+cargo +1.88.0 fmt --check
+cargo +1.88.0 clippy --all-targets --locked -- -D warnings
+cargo +1.88.0 test --all-targets --locked
+```
+
 ## 已知限制
 
 - `regex` crate 无回溯引用、无 lookaround。
