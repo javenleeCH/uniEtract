@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish, e.g. v0.3.1'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  RELEASE_TARGETS: x86_64-unknown-linux-gnu,x86_64-pc-windows-msvc,x86_64-apple-darwin,aarch64-apple-darwin
+
+jobs:
+  build:
+    name: Package ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            exe: ux
+            format: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            exe: ux.exe
+            format: zip
+          # macos-13 was retired on 2025-12-04; Intel builds use macos-15-intel.
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            exe: ux
+            format: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            exe: ux
+            format: tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          targets: ${{ matrix.target }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Verify release version
+        id: release
+        run: python .github/scripts/check_release_version.py --write-github-output
+      - name: Build ${{ matrix.target }}
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Verify binary version
+        run: python .github/scripts/check_release_version.py --binary target/${{ matrix.target }}/release/${{ matrix.exe }}
+      - name: Package archive
+        run: python .github/scripts/package_release.py --version ${{ steps.release.outputs.version }} --target ${{ matrix.target }} --binary target/${{ matrix.target }}/release/${{ matrix.exe }} --format ${{ matrix.format }} --output-dir dist/release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.target }}
+          path: dist/release/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Verify release version and notes
+        id: release
+        run: python .github/scripts/check_release_version.py --write-github-output --notes dist/release/RELEASE_NOTES.md
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: packages-*
+          path: dist/release
+          merge-multiple: true
+      - name: Aggregate and verify checksums
+        run: python .github/scripts/package_release.py --collect --version ${{ steps.release.outputs.version }} --output-dir dist/release
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: ux ${{ steps.release.outputs.version }}
+          body_path: dist/release/RELEASE_NOTES.md
+          fail_on_unmatched_files: true
+          files: |
+            dist/release/*.zip
+            dist/release/*.tar.gz
+            dist/release/SHA256SUMS

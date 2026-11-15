@@ -7,13 +7,13 @@
 ```powershell
 cargo build --release            # 产物：target/release/ux
 cargo install --path .           # 安装到 ~/.cargo/bin/ux
-ux --version                     # ux 0.3.0
+ux --version                     # ux 0.3.1
 ux --completions powershell      # 生成补全脚本到 stdout
 ```
 
-需要 Rust 1.88+（edition 2024，MSRV 由 CI 的 1.88 job 与 `cargo build --locked` 双重把关）。MIT 许可见 `LICENSE`。Shell 补全支持 bash / zsh / fish / powershell / elvish。
+需要 Rust 1.88+（edition 2024，MSRV 由 CI 的 1.88 job 与 `cargo build --locked` 双重把关）。MIT 许可见 `LICENSE`。Shell 补全支持 bash / zsh / fish / powershell / elvish。也可从 GitHub Releases 下载对应平台的预编译包（含 `ux`、`README.md`、`LICENSE`、`CHANGELOG.md` 与 `docs/`），校验 `SHA256SUMS` 后解压即用。
 
-版本说明：文档与 `CHANGELOG.md` 中的 `0.3.1` 指**下一个发布版本**；当前 `Cargo.toml` / `ux --version` 仍为 `0.3.0`，发版时统一提升。因此未发版的工作树里，按源码构建的二进制版本号会**落后**于文档描述的行为；这是临时状态，发版即消除。依赖版本号做分支判断的脚本请以 `--help` 与实际行为为准。
+当前版本 `0.3.1`：`Cargo.toml`、`Cargo.lock`、`ux --version` 与 `CHANGELOG.md` 保持一致，由 `v0.3.1` tag 经 GitHub Actions 自动发版。变更记录见 `CHANGELOG.md`，版本路线见「0.4.0 时间表」。
 
 ## 30 秒上手
 
@@ -203,6 +203,21 @@ cargo +1.88.0 fmt --check
 cargo +1.88.0 clippy --all-targets --locked -- -D warnings
 cargo +1.88.0 test --all-targets --locked
 ```
+
+## 发布流程
+
+版本由 tag 驱动的 GitHub Actions（`.github/workflows/release.yml`）发布，不需要本地上传二进制：
+
+```powershell
+python .github/scripts/check_release_version.py   # tag / manifest / 文档 / 二进制一致性
+git tag v0.3.1
+git push origin v0.3.1
+git push github v0.3.1                            # 触发 Release workflow
+```
+
+推送 `v*` tag 时（也可用 `workflow_dispatch` 指定 tag 重跑），workflow 用 Rust 1.88 在 Linux x86_64、Windows x86_64、macOS x86_64 / arm64 四个 runner 上执行 `cargo build --release --locked --target ...`；`.github/scripts/check_release_version.py` 先校验 `Cargo.toml`、`Cargo.lock`、`fuzz/Cargo.lock`、`CHANGELOG.md`、`README.md`、`docs/cli-design.md` 与 `ux --version` 全部对齐，随后 `.github/scripts/package_release.py` 打包为 `ux-<version>-<target>.tar.gz` / `.zip`。包内含 `ux`（Windows 为 `ux.exe`）、`README.md`、`LICENSE`、`CHANGELOG.md` 与 `docs/`。发布 job 会重算每个包的哈希、生成 `SHA256SUMS`、核对四个平台产物齐全，再把 CHANGELOG 中该版本的说明作为 Release 正文一并发布。
+
+下载后先对照 `SHA256SUMS` 中的同名条目校验压缩包哈希（Linux `sha256sum <file>`、macOS `shasum -a 256 <file>`、Windows `Get-FileHash -Algorithm SHA256 <file>`），再解压使用。同一脚本也可在本地打包：`python .github/scripts/package_release.py --version 0.3.1 --target x86_64-pc-windows-msvc --binary target/release/ux.exe --format zip`。
 
 ## 已知限制
 

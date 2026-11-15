@@ -50,6 +50,8 @@ jobs:
         # Standalone Python scripts (no rg, no `python -c`) behave identically
         # under bash and pwsh; a missing file is a hard failure, not a no-op.
         run: python .github/scripts/check_contract_docs.py
+      - name: Release version matches tag, manifests and docs
+        run: python .github/scripts/check_release_version.py
       - name: Fuzz manifest resolves under --locked
         run: python .github/scripts/check_fuzz_manifest.py
       - name: Release build

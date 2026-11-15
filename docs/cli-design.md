@@ -28,7 +28,7 @@
 | 项 | 值 |
 |---|---|
 | crate / 二进制 | `uniextract` / `ux` |
-| `Cargo.toml` version | `0.3.0`（`0.3.1` 为下一个发布版本，发版时统一提升） |
+| `Cargo.toml` version | `0.3.1`（由 `v0.3.1` tag 发版；`Cargo.lock` 与 `ux --version` 同步） |
 | edition / MSRV | `2024` / Rust `1.88` |
 | 依赖锁定 | `Cargo.lock` 与 `fuzz/Cargo.lock`，CI 全量 `--locked` |
 | 许可 | MIT |
