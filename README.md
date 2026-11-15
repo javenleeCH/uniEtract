@@ -222,3 +222,7 @@ python sample/export_cases.py --check
 | 提取提示（hint） | **不做** |
 | 库接口 | **不承诺稳定库 API、不发布库文档**：`pub` 项（`run` / `parse_pipeline` / `cli`）仅用于内部分层与测试，稳定契约只有 CLI |
 | BrokenPipe 按输入/输出侧区分 | **做（甲方技术复核增列）**：输入侧读错输出 `runtime(1)` 诊断，不再静默返回 0；验收点为输入侧管道破裂时 `rc=1` 且 stderr 有 `runtime` 诊断 |
+
+## Agent Skill
+
+随仓库提供 `.codebuddy/skills/ux-extract/`，供支持 `SKILL.md` 格式的 Agent 加载使用；分发包为 `dist/ux-extract.zip`。一键安装、验证、卸载，以及安装到其他 Agent 的路径说明见 `.codebuddy/skills/ux-extract/INSTALL.md`（该说明也随 zip 分发）。

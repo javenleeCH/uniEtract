@@ -64,6 +64,8 @@ Read `code` and `exit_code` from stderr, not human wording. Use the decision tab
 | Resource | When to load |
 |---|---|
 | `scripts/ux_probe.py` | Run at the start of every task; deterministic preflight with a JSON report |
+| `scripts/install.py` | Human-only: installs this skill into another agent. Do not run during extraction tasks |
+| `INSTALL.md` | Human-only installation guide bundled in the zip. Do not load for extraction tasks |
 | `references/cli-contract.md` | Flags, stages, formats, diagnostics, exit codes, decision table, traps |
 | `references/path-spec.md` | Writing or debugging `--path-spec`, captures, pruning, NativeHeap example |
 | `references/recipes.md` | Copy-paste commands by input type and task |
