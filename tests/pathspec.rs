@@ -1,4 +1,8 @@
 //! End-to-end coverage for `--path-spec` (design §4 / §5).
+//!
+//! Since 0.3.1 the spec language accepts only explicit `{name:re:...}` and
+//! `{name:glob:...}` placeholders. Calendar/time validity is expressed by the
+//! caller's regex, never inferred by `ux`.
 use std::fs;
 use std::path::Path;
 
@@ -16,7 +20,10 @@ fn write(root: &Path, relative: &str, content: &str) {
     fs::write(path, content).unwrap();
 }
 
-const SPEC: &str = "data/{ts:time:%Y-%m-%dT%H-%M-%S}_SRRG/render_service/{mins:re:\\d+}min/hidumper/txt/{file:glob:*.txt}";
+/// The shape regex encodes the date constraint that `time:` used to own. It
+/// deliberately does NOT validate real calendar dates or clock ranges: 02-29
+/// and `T99-99-99` are accepted, 02-30 is rejected by the caller's fragment.
+const SPEC: &str = "data/{ts:re:(?:\\d{4}-(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|\\d{4}-(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|\\d{4}-02-(?:0[1-9]|1\\d|2\\d))T\\d{2}-\\d{2}-\\d{2}}_SRRG/render_service/{mins:re:\\d+}min/hidumper/txt/{file:glob:*.txt}";
 const EXPR: &str = r#"re(r"NativeHeap pss:\s*(?<kb>\d+)\s*kB") | jq({kb})"#;
 
 fn scenario(root: &Path) {
@@ -81,12 +88,10 @@ fn path_spec_selects_exactly_the_conforming_files_and_exposes_captures() {
         lines[0].contains("\"ts\":\"2026-11-14T19-45-49\""),
         "{stdout}"
     );
-    assert!(
-        lines[0].contains("\"ts_fields\":[2026,11,14,19,45,49]"),
-        "{stdout}"
-    );
     assert!(lines[0].contains("\"mins\":\"30\""), "{stdout}");
     assert!(lines[0].contains("\"file\":\"a.txt\""), "{stdout}");
+    // Captures are read-only string metadata: no derived `ts_fields` array.
+    assert!(!stdout.contains("ts_fields"), "{stdout}");
     assert!(
         !stdout.contains("777"),
         "decoy paths leaked into the result"
@@ -97,14 +102,19 @@ fn path_spec_selects_exactly_the_conforming_files_and_exposes_captures() {
 fn list_shows_the_matched_inventory_with_captures() {
     let dir = tempdir().unwrap();
     scenario(dir.path());
-    ux().current_dir(dir.path())
+    let output = ux()
+        .current_dir(dir.path())
         .args(["--path-spec", SPEC, "--list"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("\"captures\""))
-        .stdout(predicate::str::contains("\"ts_fields\""))
-        .stdout(predicate::str::contains("2026-02-30").not())
-        .stdout(predicate::str::contains("junk_SRRG").not());
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.lines().count(), 2, "{stdout}");
+    assert!(stdout.contains("\"captures\""), "{stdout}");
+    assert!(stdout.contains("\"ts\""), "{stdout}");
+    assert!(!stdout.contains("ts_fields"), "{stdout}");
+    assert!(!stdout.contains("2026-02-30"), "{stdout}");
+    assert!(!stdout.contains("junk_SRRG"), "{stdout}");
 }
 
 #[test]
@@ -113,15 +123,19 @@ fn bad_specs_fail_before_any_file_is_opened() {
     scenario(dir.path());
     for (spec, needle) in [
         (
-            "data/{ts:time:%Y-%m-%dT%H:%M:%S}_SRRG/{f:glob:*.txt}",
-            "cannot contain a colon",
+            "data/{ts:time:%Y-%m-%dT%H-%M-%S}_SRRG/{f:glob:*.txt}",
+            "unknown placeholder kind `time`",
         ),
         (
-            "data/{ts:time:%Y-%q}_SRRG/{f:glob:*.txt}",
-            "unknown time directive",
+            "data/{n:lit:foo}/{f:glob:*.txt}",
+            "unknown placeholder kind `lit`",
+        ),
+        (
+            r"data/{%Y-%m-%d}/{*.txt}",
+            "must be {name:re:...} or {name:glob:...}",
         ),
         ("data//{f:glob:*.txt}", "empty segment"),
-        ("data/{a:re:\\d+}/{a:re:\\d+}.txt", "duplicate capture name"),
+        (r"data/{a:re:\d+}/{a:re:\d+}.txt", "duplicate capture name"),
     ] {
         ux().current_dir(dir.path())
             .args(["--path-spec", spec, "-e", "text()"])
@@ -148,25 +162,18 @@ fn path_spec_and_positional_paths_are_mutually_exclusive() {
 fn directory_ending_spec_does_not_silently_append_a_globstar() {
     let dir = tempdir().unwrap();
     scenario(dir.path());
+    let dir_spec = SPEC.strip_suffix("/{file:glob:*.txt}").unwrap();
     ux().current_dir(dir.path())
-        .args([
-            "--path-spec",
-            "data/{ts:time:%Y-%m-%dT%H-%M-%S}_SRRG/render_service/{mins:re:\\d+}min/hidumper/txt",
-            "-f",
-            "text",
-            "-e",
-            "text()",
-        ])
+        .args(["--path-spec", dir_spec, "-f", "text", "-e", "text()"])
         .assert()
         .success()
         .stdout("");
 }
 
 #[test]
-fn shorthand_spec_is_accepted() {
+fn shorthand_spec_is_a_usage_error() {
     let dir = tempdir().unwrap();
     write(dir.path(), "data/2026-11-14/a.txt", "hit\n");
-    write(dir.path(), "data/junk/a.txt", "miss\n");
     ux().current_dir(dir.path())
         .args([
             "--path-spec",
@@ -177,7 +184,24 @@ fn shorthand_spec_is_accepted() {
             r#"re(r"hit")"#,
         ])
         .assert()
+        .code(2)
+        .stdout("")
+        .stderr(predicate::str::contains("invalid --path-spec"));
+}
+
+#[test]
+fn calendar_and_clock_validity_are_delegated_to_the_regex() {
+    let dir = tempdir().unwrap();
+    write(
+        dir.path(),
+        "data/2026-02-29T99-99-99_SRRG/render_service/30min/hidumper/txt/a.txt",
+        "NativeHeap pss: 1 kB\n",
+    );
+    // 0.3.1 performs no calendar/time validation: 02-29 and T99-99-99 are
+    // accepted. 02-30 is rejected only because SPEC's shape regex excludes it.
+    ux().current_dir(dir.path())
+        .args(["--path-spec", SPEC, "--list"])
+        .assert()
         .success()
-        .stdout(predicate::str::contains("hit"))
-        .stdout(predicate::str::contains("miss").not());
+        .stdout(predicate::str::contains("2026-02-29T99-99-99_SRRG"));
 }

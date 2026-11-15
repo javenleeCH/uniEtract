@@ -14,11 +14,11 @@ v3 做三件事：
 
 状态标记贯穿全文：`[已实现]` 指代码已落地并有测试覆盖；`[v3 契约]` 指 v3 新确定的目标契约；`[待实施]` 指 v2 遗留但未完成的目标。
 
-> **状态同步（2026-11-14，阶段 1–6 实施收口）**：阶段 1–6 已全部落地，`Cargo.toml` 版本为 `0.2.0`。原 v3 的 `[v3 契约]` / `[待实施]` **状态列**已逐处改为 `[已实现]`，契约条款本身保留不改；§7 的验收标准保留为回归基线。实现与原计划有偏差的条目在 §0.5 与 §9 的 A11–A16 显式登记，不靠改写契约来掩盖。收口后另做了一次**DSL 解析器 PEG 化**（手写状态机 + winnow → pest 2，A15/A16），属实现替换而非契约变更：§4.1/§4.2 的语法、退出码与九条示例均保持不变。
+> **状态同步（2026-11-15，0.3.1 契约收敛轮）**：v3 的阶段 0–6（共 7 阶段）已全部落地，`Cargo.toml` 版本为 `0.3.0`（0.3.1 改动已在工作树，发版时统一提升版本号），MSRV 为 Rust 1.88 且 CI 有 1.88 `--locked` 门禁。原 v3 的 `[v3 契约]` / `[待实施]` **状态列**已逐处改为 `[已实现]`，契约条款本身保留不改；§7 的验收标准保留为回归基线。实现与原计划有偏差的条目在 §0.5 与 §9 的 A11–A16 显式登记，不靠改写契约来掩盖。收口后另做了一次**DSL 解析器 PEG 化**（手写状态机 + winnow → pest 2，A15/A16），属实现替换而非契约变更：§4.1/§4.2 的语法、退出码与九条示例均保持不变。0.3.1 只做契约对齐，未拆 `run_inner`、未改 `error` / `Reporter` 签名。
 
-### 0.1a 相关设计提案（未实施）
+### 0.1a 相关设计与状态
 
-- `路径匹配模块-设计.md`（v1 提案，2026-11-14）：把产品拆成 `locate`（路径匹配）/ `extract`（内容抽取）两个模块，定义 PathSpec 路径模式语言、段级剪枝、命名捕获元数据，并给出 L0–L5 实施计划与 A17–A23 决策记录。**文中全部 `[提案]` 参数尚未落地**；当前 CLI 契约、文件发现语义与状态表仍以本文 §4.3 / §5.3 / §0.5 为准。提案进入 L3 实施时才回写本文，不得提前把提案条款标成 `[已实现]`。
+- `路径匹配模块-设计.md`（0.3.1 实现状态）：`src/pathspec.rs` 的段级剪枝、显式 `re:` / `glob:` 占位、只读字符串 captures 与 8 项场景断言。CLI 契约以 `README.md` 和 `ux --help` 的 `PATH SPEC` 段为准；本文 §4.3 / §5.3 / §0.5 仍是基础文件发现语义。库接口**不公共化**；v1 提案中的分 crate / 公共 Rust API、时间占位、日历校验、`--sort` / `--max-files` 等条款已在 A19、A24–A27 明确否决。
 
 ### 0.2 v3 审查结论
 
@@ -71,10 +71,10 @@ v3 做三件事：
 | BOM / 编码 / 二进制 | 未处理 | **[已实现]** 阶段 4：`src/source.rs`，BOM/GB18030/UTF-16/体积上界/XML 声明规范化 | 带 BOM 首行、GBK、UTF-16 均可用 |
 | `-O json` 紧凑、缩进 | 紧凑单行 | **[已实现]** 阶段 5：默认缩进 2 空格，`--compact` 关闭 | 大数组人可读 |
 | 每结果 flush | 写成契约并标「已有实现」 | **[已实现]** 阶段 5：默认 64 KiB 批量 + `--line-buffered` / TTY 逐条 | 大文件 syscall 数量级下降，管道场景显式可控 |
-| 端到端测试 | `tests/` 不存在 | **[已实现]** 阶段 6：`tests/cli.rs`、`tests/jq_compat.rs`、CI、fuzz 骨架 | 46 单测 + 26 CLI + 3 兼容集 |
-| XPath 命名空间 | 仅前缀解析 | **仍为已知限制**；help 文案已按 §6.4 修正 | 真 URI 匹配留待 v4，见 §10 |
+| 端到端测试 | `tests/` 不存在 | **[已实现]** 阶段 6：`tests/cli.rs`、`tests/jq_compat.rs`、`tests/agent.rs`、`tests/pathspec.rs`、`tests/pathspec_scenario.rs`、`tests/lib_run.rs`、CI、fuzz 骨架 | 0.3.1 当前：86 单测 + 26 CLI + 3 兼容 + 21 Agent 契约 + 7 pathspec + 8 场景 + 6 库直调 = 157 项 |
+| XPath 命名空间 | 仅前缀解析 | **[已修正，0.3.0]** URI 实际参与匹配，未绑定前缀编译期 `Query(2)`；旧「留待 v4」结论已作废 | 以 `README.md` / `--help` 为准，`tests/agent.rs` 与 `sample/CASES.md` 覆盖 |
 
-### 0.5 阶段 1–6 实现状态与偏差登记
+### 0.5 阶段 0–6（7 阶段）实现状态与偏差登记
 
 | 阶段 | 落地内容 | 验证 |
 |---|---|---|
@@ -99,7 +99,7 @@ v3 做三件事：
 
 ### 1.1 目标
 
-- Rust 单 crate，纯 Rust 依赖，运行时不调用外部 `jq`、shell 或本地 C 库；库核心 + 薄 CLI。
+- Rust 单 crate，纯 Rust 依赖，运行时不调用外部 `jq`、shell 或本地 C 库；内部按模块分层 + 薄 CLI，但**不承诺稳定库 API、不发布库文档**（稳定契约只有 CLI，见 §0.1a 与 §11）。
 - 组合式管道 DSL，把 jq、XPath、正则放进**同一条记录流**，阶段间用统一数据模型传递，而不是三个子命令。
 - 首版输入：JSON、JSONL/NDJSON、YAML、TOML、XML、HTML、纯文本/日志、CSV/TSV。
 - 路径支持目录递归、glob、模糊过滤。
@@ -337,7 +337,7 @@ output.finish()
 
 - 默认：**当前文件首错即停、继续其他文件**，最终有任何错误退出 1；`--strict` 全局首错即停。
 - 诊断格式：`ux: {path}:{line} (record N): stage \`{name}\`: {message}`，含失败阶段名与实际类型。
-- `BrokenPipe` 视为正常终止（退出 0）；检测必须覆盖 `AppError::Io` **以及** `Runtime` 中被包装的 IO 错误，避免 Windows 管道下把 EPIPE 当成失败。
+- 判定按**错误变体**而非 I/O 方向：`AppError::Io(BrokenPipe)` 视为正常终止（退出 0，不写诊断）；`Runtime` 中包装的读错误保持 `runtime(1)`。0.3.1 未改 `source.rs` / `output.rs` / `lib.rs` / `main.rs` 代码，输入侧首次 `fill_buf` 与逐行 `read_until` 的 BrokenPipe 同样返回 0；按输入/输出侧区分不属于 0.3.1 契约。
 - `warning` 类（`--skip-incompatible`、二进制跳过）不计入 `had_errors`；但显式传入的单个文件被跳过时须在 stderr 明确写出「0 个文件被处理」，避免「无输出 + 退出 0」被误读为零匹配（P2）。
 
 ---
@@ -470,7 +470,7 @@ ux -e PIPELINE
 - **处理顺序**：按命令行给出的路径顺序展开；每个路径内部按**规范化相对路径字典序**排序。排序基准为「该输入路径自身」：输入是目录时相对该目录，是 glob 时相对 glob 的**非通配前缀目录**，是显式文件时只有一项。`-` 按它在参数中的位置插入，不参与排序。**这条基准必须固定**，否则 `.` 与 `../other` 混用时输出顺序不可复现。
 - **目录**：`walkdir` 递归，`filter_entry` **在遍历时**剪枝（不是先走完再过滤）；默认忽略目录名：`.git`、`.hg`、`.svn`、`target`、`node_modules`、`.venv`、`__pycache__`、`.trae`。默认忽略表按**目录名**匹配，与「隐藏文件不默认忽略」并不矛盾（后者按文件名）；`.env`、`.npmrc` 等隐藏文件正常处理。`--no-default-ignore` 清空该表；`--exclude GLOB` 在默认表**之后追加**，匹配完整相对路径。
 - **符号链接**：不跟随（`walkdir` 默认），避免循环；若目录路径本身是 symlink，允许进入一次并在文档说明。
-- **glob**：`*`、`?`、字符类、`**`；展开后按规范化绝对路径去重；**空匹配不等于错误**：所有输入路径展开后为空 → 无输出、退出 0、stderr 一行 `ux: no input files matched`（P2 要求可观测）。显式传入的不存在文件仍按打开失败处理（退出 1）。
+- **glob**：`*`、`?`、字符类、`**`；展开后按规范化绝对路径去重；**空匹配不等于错误**：所有输入路径展开后为空 → 无输出、退出 0、stderr 一行 `ux: no input files matched`（P2 要求可观测）。显式传入的不存在文件仍按打开失败处理（退出 1）。注：此处指 v3 基础文件发现的**路径参数 glob**；`--path-spec` 的 `{name:glob:...}` 占位是另一套更窄的语法，只支持 `*`/`?` 且**拒绝字符类**（见 `路径匹配模块-设计.md` §2）。
 - **`--fuzzy QUERY`**：**后置过滤器**（先全量枚举再过滤，不做目录剪枝），匹配对象是规范化相对路径；命中判定为 `nucleo_matcher` 打分 `> 0` **且**查询字符全部匹配（避免短查询命中过多）；大小写不敏感；同分按字典序；打分器使用固定种子保证 P1。`--max-depth` 是逃逸阀。打开文件用**原始 `Path`**，绝不用匹配后的字符串反推。
 - **遍历错误**：单个条目权限/IO 错误 → stderr warning + 跳过，不计入退出码；若因此导致零文件被处理，追加 `no input files matched`。`--strict` 时遍历错误改为终止。
 - **串行**：文件处理永远串行（P1），不得引入并行；理由写进 ADR（§9）。
@@ -547,7 +547,7 @@ v2 说用 `CompiledStage::accepts_source(InputFormat)` 静态判定，**只对�
 
 | 退出码 | 含义 |
 |---|---|
-| 0 | 成功（含零匹配）；`BrokenPipe` 正常终止；二进制/不兼容文件被跳过且仍有其它输入 |
+| 0 | 成功（含零匹配）；`AppError::Io(BrokenPipe)` 正常终止；二进制/不兼容文件被跳过且仍有其它输入 |
 | 1 | 输入/解析/求值/输出错误；`--max-results` 触顶；显式文件被判二进制 |
 | 2 | 参数矛盾、未实现的参数、DSL/jq/XPath/正则编译错误、静态类型上界检查失败 |
 
@@ -604,11 +604,11 @@ v2 的结构表只补了 `discover.rs`，漏了编码层与类型检查的归属
 
 ### 6.2 依赖与锁定
 
-当前 `Cargo.toml`（**v0.2.0 实际内容**，`anyhow` 已移除、`encoding_rs` 已写入）：
+当前 `Cargo.toml`（**0.3.x 实际内容**，`anyhow` 已移除、`encoding_rs` 已写入）：
 
 ```toml
 [package]
-name = "uniextract"; version = "0.2.0"; edition = "2024"
+name = "uniextract"; version = "0.3.0"; edition = "2024"; rust-version = "1.88"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
@@ -678,7 +678,7 @@ v2 把**架构级改动、设计最含糊**的聚合排在第一阶段，却把�
 | **5 输出与 CLI 收口** **[已完成]** | `-O json` 缩进 + `--compact`；flush 策略 + `--line-buffered` + TTY 判定；`--max-results`；`--ns` help 文案；`--compact` 误用提示；CHANGELOG/README/迁移对照 | 阶段 3（结果计数已稳定） | `-O json` 人可读且 LF 结尾；`--with-source -O text` 退出 2；`--max-results 10` 在第 11 条退出 1；`--line-buffered` 下 EOF 前可见输出；`ux --help` 输出中含命名空间限制说明 |
 | **6 测试与加固** **[已完成]** | `tests/` 端到端 golden、流式回归、可执行兼容集（替代生成器，见 A11）、fuzz target、CI 配置、HTML 容错专项 | 阶段 5 | §8 全部通过；`cargo fmt --check` / `clippy -D warnings` / `test` / `build --release` 全绿；release 二进制逐条跑 §4.4 九个示例 |
 
-**实测收尾数据**：`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test --all-targets`（46 单测 + 26 CLI + 3 兼容集 = 75 项）、`cargo build --release` 全绿；§4.4 九个示例在 release 二进制上逐条通过，退出码 0。
+**v0.2.0 实测收尾数据**：`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test --all-targets`（46 单测 + 26 CLI + 3 兼容集 = 75 项）、`cargo build --release` 全绿；§4.4 九个示例在 release 二进制上逐条通过，退出码 0。**0.3.1 当前门禁**：需要解析依赖的 cargo 步骤加 `--locked`（`cargo fmt` 不适用），157 项测试全绿，另加 Rust 1.88 MSRV job（含 `cargo test --locked`）、独立 Python 契约门禁 `.github/scripts/check_contract_docs.py` 与 `fuzz/Cargo.toml` 的 `cargo metadata --locked`。
 
 **阶段 3 排在阶段 2 之后的理由（实施中已验证）**：它是唯一会改动 `lib.rs` 编排与 `input::emit` 接口的阶段，先验证完「发现 → 逐文件」链路再动手，避免同时调试两套不确定性。实施结果证明这个顺序有效：阶段 3 重写 `engine.rs` 时，`discover.rs` 的输出契约已经稳定。
 
@@ -694,7 +694,7 @@ v2 把**架构级改动、设计最含糊**的聚合排在第一阶段，却把�
 
 PEG 化后 `dsl.rs` 另补 10 项：任意井号 raw string、井号数不匹配、字符串内含 `)`/`|`、多字节字符紧邻分隔符、阶段内空白容忍、单独的 `r` 不误判、128 层嵌套边界与超限、2 万字符长参数不误拒、2000 条确定性乱码输入不 panic、结构错误携带字节位置。
 
-总测试数：56 单测 + 26 `tests/cli.rs` + 3 `tests/jq_compat.rs` = **85 项**。
+总测试数（v0.2.0 当时）：56 单测 + 26 `tests/cli.rs` + 3 `tests/jq_compat.rs` = **85 项**；0.3.1 当前为 **157 项**（明细见 §0.1 状态表）。
 
 ### 8.2 集成与 CLI golden
 
@@ -731,7 +731,7 @@ cargo test --all-targets
 cargo build --release
 ```
 
-再用 release 二进制逐条跑 §4.4 全部九个示例，断言 stdout、退出码与流式行为。**v0.2.0 收尾实测：四条命令全绿，75 项测试通过，九个示例退出码 0。**
+再用 release 二进制逐条跑 §4.4 全部九个示例，断言 stdout、退出码与流式行为。**v0.2.0 收尾实测：四条命令全绿，75 项测试通过，九个示例退出码 0。**（0.3.1 复核：157 项测试通过，九个示例行为不变。）
 
 在 Windows Git Bash 下跑示例前必须 `export MSYS2_ARG_CONV_EXCL='*'`，且 fixture 用 heredoc 写入（`printf` 的格式串会被 MSYS 把 `\n` 改成 `/n`）；两者都会造成静默零匹配/错误结果，已在收尾时踩过并记入 §4.4 与 README。cleanup 不要用 `rm -rf` 删临时目录（safe-delete 拦截），把 fixture 放在 gitignored 的 `target/` 下即可。
 
@@ -762,7 +762,7 @@ cargo build --release
 
 ## 10. 已知限制（汇总，须同步 README 与 `--help`）
 
-1. `--ns` 不实现 namespace-URI 匹配；默认命名空间与不同前缀的等价文档匹配不上。`--ns` 的 help 文案已明确写出该限制，绕过办法是「按文档实际前缀写表达式」。
+1. **历史条款，已作废**：v3 曾写「`--ns` 不实现 namespace-URI 匹配」。0.3.0 实测确认 URI 实际参与匹配，等价 URI 的不同前缀可命中；未绑定前缀现在是编译期 `Query(2)`。以 `README.md`、`--help` 与 `sample/CASES.md` 为准，不要再按「按文档实际前缀写表达式」绕过。
 2. `-f auto` 会把无扩展名的 JSONL 误判为 JSON；需显式 `-f jsonl`。格式判定后不降级重试。
 3. XPath 1.0 不承诺完整兼容；只保证实测过的函数与轴。（`div` 虽是 XPath 运算符关键字，但 `//div` 作为名称测试在 `sxd-xpath` 中可正常匹配，已实测确认，不要写进限制清单。）
 4. `slurp` 放弃流式，内存与上游记录数成正比；`--with-source` 只保留首条来源，无逐条来源阶段。
@@ -777,3 +777,20 @@ cargo build --release
 13. **残余验证缺口**：§8.3 的「默认批量缓冲 EOF 前不可见」与「`-O json`/`slurp` 输入关闭前 stdout 为空」未写成黑盒 golden；fuzz 的 60 秒 CI smoke 未落地（A12）。
 14. **DSL 括号嵌套上限 128 层**：超出返回 `Query(2)` 且 stderr 写明 `pipeline nesting exceeds 128 levels`。pest 的 `group` 是间接递归，未限深时约 500 层会栈溢出**终止进程**；守卫只统计深度并跳过字符串，不限制参数长度（长正则不受影响）。理由见 A16。
 15. **DSL 是两层校验**：`dsl.pest` 保证结构（顶层管道、括号配平、字符串边界），`dsl.rs` 保证字面量合法（六种转义、raw string 井号数匹配、阶段名）。因此残缺 raw string 可能先被 grammar 的 `plain` 回退路径当作结构合法，再由 Rust 侧以 `unterminated raw string in \`re\`` 拒绝；两者退出码同为 2，但错误文案来源不同。
+
+---
+
+## 11. 0.4.0 时间表（已定稿，与 README / CHANGELOG / `--help` 一致）
+
+| 项 | 决定 |
+|---|---|
+| `--path-regex` / `--root` | 做，与 `--path-spec` **并存**，不替换 |
+| captures 求值注入 | 做，显式 opt-in，默认仍只读 |
+| `slurp()` / `-O json` | **保留，不废弃** |
+| 提取提示（hint） | **不做** |
+| 库接口 | **不承诺稳定库 API、不发布库文档**；`pub` 项仅用于内部分层与测试 |
+| BrokenPipe 按输入/输出侧区分 | **做（甲方技术复核增列）**：输入侧读错输出 `runtime(1)` 诊断，不再静默返回 0；验收点为输入侧管道破裂时 `rc=1` 且 stderr 有 `runtime` 诊断 |
+
+0.3.1 只做契约收敛，不做架构重构：不拆 `run_inner`、不改 `AppError` / `Reporter` 签名、不把 captures 注入求值、不删 `--path-spec`。按输入/输出侧区分 BrokenPipe 不属于 0.3.1 契约，当前判定按错误变体（见 §5 与 README）。
+
+panic 契约（0.3.1 收窄后的准确表述）：`catch_unwind` **无条件**把主线程 unwind panic 收敛为 `runtime(1)`；`--error-format json` 只额外安装空 panic hook 保证 stderr 纯净；库直调 `run()` 同样收敛，但不继承该进程级 hook，调用方需自行管理。0.3.0 的「任何 panic / 不会出现 rc=101」是过度承诺，不再作为全局断言。

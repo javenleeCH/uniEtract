@@ -1,28 +1,25 @@
 #!/usr/bin/env python3
-"""Generate the NativeHeap path-matching scenario fixtures.
+"""Regenerate the NativeHeap path-matching fixtures.
 
 Run from anywhere:  python scenarios/pathmatch/generate.py
 
-The tree mirrors the user's production layout::
+`tests/pathspec_scenario.rs` owns the assertions and the byte-for-byte
+expectations; this script is only a convenience writer for the single fixture
+tree at `tests/fixtures/pathmatch/data`. Windows directory names cannot
+contain ':', so timestamps on disk use '-' in the time part (19-45-49).
 
-    data/{%Y-%m-%dT%H:%M:%S}_SRRG/render_service/{\\d+}min/hidumper/txt/*.txt
-
-NOTE ON COLONS: Windows directory names cannot contain ':'. The scenario is
-therefore written to disk with '-' in the time part (19-45-49). The original
-colon form is still exercised by verify.py as *logical paths* (pure strings,
-never created on disk). See .trae/documents/路径匹配模块-设计.md §4.4.
-
-FILES is the single source of truth for both generation and verification:
+FILES is the source of truth for generation:
     rel path -> (content, path_should_match, expected_kb_or_None)
 
-Writes go through write_bytes() with explicit LF so checkout normalization
-and Windows CRLF translation cannot change the fixtures.
+Writes use write_bytes() with explicit LF so checkout normalization and
+Windows CRLF translation cannot change the fixtures.
 """
 
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-DATA = ROOT / "data"
+ROOT = Path(__file__).resolve().parents[2]
+BASE = ROOT / "tests" / "fixtures" / "pathmatch"
+DATA = BASE / "data"
 
 A1 = "data/2026-11-14T19-45-49_SRRG/render_service/30min/hidumper/txt"
 A2 = "data/2026-11-15T08-12-03_SRRG/render_service/45min/hidumper/txt"
@@ -78,34 +75,16 @@ FILES = {
         (hit(77777, "B8-negative-min"), False, None),
 }
 
-# The user's literal template uses colons. Windows cannot create these names,
-# so verify.py matches them as strings only.
-LOGICAL_COLON_PATHS = [
-    "data/2026-11-14T19:45:49_SRRG/render_service/30min/hidumper/txt/dump1.txt",
-    "data/2026-11-15T08:12:03_SRRG/render_service/45min/hidumper/txt/dump2.txt",
-    "data/2026-11-16T23:59:59_SRRG/render_service/5min/hidumper/txt/dump3.txt",
-    "data/2026-11-14T19:45:49_SRRG/render_service/xxmin/hidumper/txt/dump7.txt",
-]
-
-ORIGINAL_TEMPLATE = (
-    "data/{%Y-%m-%dT%H:%M:%S}_SRRG/render_service/{\\d+}min/hidumper/txt"
-)
-OFFICIAL_SPEC = (
-    "data/{ts:time:%Y-%m-%dT%H-%M-%S}_SRRG/render_service/"
-    "{mins:re:\\d+}min/hidumper/txt/{file:glob:*.txt}"
-)
-
 
 def main():
     for rel, (content, _, _) in FILES.items():
-        path = (ROOT / rel).resolve()
-        # `..` in a decoy path is resolved above; guard against escaping ROOT.
-        if not path.is_relative_to(ROOT):
-            raise SystemExit(f"refusing to write outside scenario dir: {path}")
+        path = (BASE / rel).resolve()
+        if not path.is_relative_to(BASE.resolve()):
+            raise SystemExit(f"refusing to write outside fixture dir: {path}")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(content.encode("utf-8"))
 
-    written = sorted(p.relative_to(ROOT).as_posix() for p in DATA.rglob("*") if p.is_file())
+    written = sorted(p.relative_to(DATA).as_posix() for p in DATA.rglob("*") if p.is_file())
     print(f"generated {len(FILES)} logical entries -> {len(written)} files under {DATA}")
     for rel in written:
         print("  " + rel)

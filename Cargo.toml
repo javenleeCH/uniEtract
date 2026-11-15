@@ -2,7 +2,7 @@
 name = "uniextract"
 version = "0.3.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 description = "Composable JSON, XPath and regex extraction CLI"
 license = "MIT"
 keywords = ["cli", "jq", "xpath", "regex", "extract"]

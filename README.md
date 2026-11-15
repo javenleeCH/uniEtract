@@ -11,7 +11,9 @@ ux --version                     # ux 0.3.0
 ux --completions powershell      # 生成补全脚本到 stdout
 ```
 
-需要 Rust 1.85+（edition 2024）。MIT 许可见 `LICENSE`。Shell 补全支持 bash / zsh / fish / powershell / elvish。
+需要 Rust 1.88+（edition 2024，MSRV 由 CI 的 1.88 job 与 `cargo build --locked` 双重把关）。MIT 许可见 `LICENSE`。Shell 补全支持 bash / zsh / fish / powershell / elvish。
+
+版本说明：文档与 `CHANGELOG.md` 中的 `0.3.1` 指**下一个发布版本**；当前 `Cargo.toml` / `ux --version` 仍为 `0.3.0`，发版时统一提升。因此未发版的工作树里，按源码构建的二进制版本号会**落后**于文档描述的行为；这是临时状态，发版即消除。依赖版本号做分支判断的脚本请以 `--help` 与实际行为为准。
 
 ## 30 秒上手
 
@@ -76,7 +78,30 @@ DSL 结构由 `pest` 的 PEG 语法（`src/dsl.pest`）描述，`src/dsl.rs` 负
 - 结果：`--max-results N` 在第 N+1 条时报错退出 1，立即终止且不输出残缺聚合，不静默截断。
 - 诊断：`--error-format text|json`（默认 text）控制 stderr 编码；`--quiet`（别名 `--silent`）压制 warning，错误始终输出。
 
-退出码：`0` 成功（含零匹配）、`1` 输入/解析/求值/输出错误、`2` 参数或编译错误。`BrokenPipe` 视为正常终止。详细字段见下节。
+### `--path-spec`：结构化路径匹配
+
+按**路径结构**选择输入，而不是先递归全部文件再按内容过滤。spec 以当前工作目录为锚，`/` 分段；段内只允许两种显式占位：
+
+| 写法 | 含义 |
+|---|---|
+| `{name:re:...}` | Rust regex 片段，产生命名捕获 `name` |
+| `{name:glob:*.txt}` | `*` / `?` 段内通配（不跨 `/`），产生命名捕获 `name` |
+
+- 0.3.1 起**不接受** `time:` / `lit:` / 简写 `{%Y-%m-%d}` / `{\d+}`，也**不做日历或时钟合法性校验**；有效性由调用方写进 `re:` 片段。非法 spec 在打开任何目录之前返回 `Usage(2)`。
+- 命名 captures 是**只读字符串元数据**：出现在 `--list` 与 `--with-source` 的 `source.captures` 里，**不参与流水线求值**（DSL 无法引用），也不生成 `ts_fields` 之类派生字段。
+- 目录结尾的 spec 不会隐式追加 `**`；必须显式写出文件段，例如 `/{file:glob:*.txt}`。
+- 与位置参数 `PATH|GLOB` 互斥；可与 `--exclude`、`--fuzzy`（后置过滤）、`--no-default-ignore` 组合。段级剪枝：不匹配的中间目录根本不会被进入。
+- 发现阶段三类异常（`read_dir` 打开失败、`ReadDir` 单条目失败、`file_type` 失败）现在会输出 warning 而不是静默跳过；`--quiet` 可压制，因此**需要区分零匹配与「丢文件」时不要加 `--quiet`**。
+- `glob` 占位不支持字符类（`[...]`，含字面 `]`），需要时改用 `{name:re:...}`；`re:` 片段禁止顶层 `|` 与不配平括号，避免悄悄逃逸捕获组、让段级剪枝静默失效。
+- captures 在 JSON 对象里按名字**字典序**输出（不是 spec 中的出现顺序）；同名捕获在编译期拒绝。
+- `--max-depth` 与 `--path-spec` 组合时会被忽略并输出一条 warning；遍历深度由 spec 的段数决定。
+- 转义只支持 `\{` / `\}` / `\\` 三种；其他 `\X` 保留为字面两字符。
+
+```powershell
+ux --path-spec 'data/{ts:re:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}}_SRRG/render_service/{mins:re:\d+}min/hidumper/txt/{file:glob:*.txt}' --list
+```
+
+退出码：`0` 成功（含零匹配）、`1` 输入/解析/求值/输出错误、`2` 参数或编译错误。判定按**错误变体**而非 I/O 方向：`AppError::Io(BrokenPipe)` 一律视为正常终止并退出 0（不写诊断）；被 `Runtime(String)` 包裹的读错误仍是 `runtime(1)`。0.3.1 **未改变**这一 0.3.0 既有判定：输入侧首次 `fill_buf` 与逐行 `read_until` 产生的 BrokenPipe 同样返回 0，按输入/输出侧区分不属于本轮契约。详细字段见下节。
 
 ## 面向开发者与 Agent 的稳定契约
 
@@ -84,9 +109,11 @@ CLI 会被脚本、CI 与 LLM 生成的命令直接调用，因此下列行为�
 
 | 关注点 | 保证 |
 |---|---|
+| 契约边界 | 「保证」列只承诺跨版本不变的行为；标为「当前行为」的条目会在下个 minor 变更，不纳入长期稳定契约 |
 | stdout | 只承载数据；`-O jsonl` 每行一个紧凑 JSON，`-O json` 单个数组，`-O text` 原样文本；`--list` 输出输入清单 JSONL |
 | stderr | 每条诊断一行；`--error-format json` 时每行都是可解析的 JSON 对象；`--quiet` 压制 warning 但错误必出 |
-| 退出码 | `0` 成功（含零匹配）、`1` 运行期错误、`2` 参数/编译错误；`BrokenPipe` 为 0；意外 panic 也收敛为 `1` 的结构化 `runtime` 诊断，不会出现 rc=101 |
+| 退出码 | `0` 成功（含零匹配）、`1` 运行期错误、`2` 参数/编译错误；`Runtime(String)` 包裹的读错误为 1。`catch_unwind` **无条件**把主线程 unwind panic 收敛为 `1` 的结构化 `runtime` 诊断；`--error-format json` 模式额外安装空 panic hook，保证 stderr 只有结构化诊断。库直调 `run()` 同样收敛，但不继承该进程级 hook，调用方需自行管理 |
+| 当前行为（非长期保证） | 0.3.x 下 `AppError::Io(BrokenPipe)` 一律为 0，含输入侧裸 IO 错误；**0.4.0 起输入侧改为 `runtime(1)` 并输出诊断**。见「0.4.0 时间表」与「已知限制」中「退出码 0 不证明输入被完整读取」 |
 | 顺序 | 文件按归一化相对路径字典序串行处理；`--list` 顺序与实际处理顺序一致，多次调用字节级稳定 |
 | 输入 | 无路径默认读 stdin；stdin 是终端且未显式给 `-` 时返回 `Usage(2)` 并提示，避免自动化进程挂起；`--no-stdin` 可彻底禁用 |
 
@@ -117,12 +144,12 @@ ux --quiet --error-format json -f jsonl -e 'jq(select(.level == "ERROR"))' .\log
 
 | stderr | 含义 | 建议动作 |
 |---|---|---|
-| 空 | 真的零匹配 | 复核表达式与输入格式（显式 `-f jsonl`、HTML 隐式 `<tbody>` 等） |
+| 空 | 真的零匹配；**或**输入侧管道破裂被按 `AppError::Io(BrokenPipe)` 静默判为成功 | 复核表达式与输入格式（显式 `-f jsonl`、HTML 隐式 `<tbody>` 等）；若输入来自管道，改用文件输入重跑以排除上游提前关闭 |
 | `no input files matched` | glob / 过滤没命中 | 用 `ux --list` 复核输入集 |
 | `binary input skipped` / `incompatible` | 文件被跳过 | 按需加 `--force-text` 或调整首阶段 |
 | `assumed GB18030` | 编码回退 | 显式 `--encoding` 更稳 |
 
-`--quiet` 会隐藏这些 warning：只关心数据且依赖退出码时可加；需要区分「零匹配」与「文件被跳过」时不要加。
+`--quiet` 会隐藏这些 warning：只关心数据且依赖退出码时可加；需要区分「零匹配」与「文件被跳过」时不要加。**`rc=0` + stdout 空 + stderr 空不能证明输入被完整读取**：输入侧 BrokenPipe 也是这个组合，详见「已知限制」的「退出码 0 不证明输入被完整读取」。
 
 容易误判的点：
 
@@ -176,6 +203,18 @@ python sample/export_cases.py --check
 - HTML 容错树会插入隐式 `<tbody>` 并折叠标签/属性名为小写，表达式需按实际 DOM 写。
 - Windows Git Bash / MSYS2 会把 `-e` 里的 `//a`、`//b:book` 当 UNC 路径改写，导致 XPath 静默零匹配。执行前设 `MSYS2_ARG_CONV_EXCL='*'`，或改用 PowerShell。这是 shell 的参数转换，不是 `ux` 的解析问题。
 - DSL 括号嵌套最多 128 层，超限时报错退出 2（不崩溃、不静默截断）；限制只针对嵌套深度，不影响长正则或长 jq filter。
-- `--list` 已覆盖「先确认输入集」；更细的 `--path-spec` / `--sort` / `--max-files` 仍属未实现提案。manpage 未随发行提供，可用 `--help` 与 `--completions` 替代。
+- `--path-spec` 只做段级结构匹配：不做跨段通配、不做基于 captures 的排序，也不提供 `--sort` / `--max-files` 或提取提示（hint）。manpage 未随发行提供，可用 `--help` 与 `--completions` 替代。
+- **退出码 0 不证明输入被完整读取**：0.3.1 按错误变体判定 BrokenPipe，输入侧管道破裂（首次 `fill_buf` / 逐行读）同样返回 0 且 stderr 为空。Agent / 脚本不能只靠 `rc=0` 判断输入已读完；需要强保证时改用文件输入。按输入/输出侧区分已列入 0.4.0 必修项。
 
-完整契约、ADR 与实施计划见 `.trae/documents/统一信息抽取器-cli-设计.md`（v3）；其中的 `--ns` 结论以本 README 与 `--help` 为准（URI 参与匹配）。模块拆分（`locate` / `extract`）与路径匹配能力的设计提案见 `.trae/documents/路径匹配模块-设计.md`（v1 提案，**未实现**）。变更记录见 `CHANGELOG.md`。
+完整契约与 ADR 见 `.trae/documents/统一信息抽取器-cli-设计.md`（v3，已按 0.3.x 现状同步）；其中的 `--ns` 结论以本 README 与 `--help` 为准（URI 参与匹配）。路径匹配的段级剪枝与夹具证据见 `.trae/documents/路径匹配模块-设计.md`（已实现）。变更记录见 `CHANGELOG.md`。
+
+## 0.4.0 时间表（已定稿）
+
+| 项 | 决定 |
+|---|---|
+| `--path-regex` / `--root` | 做，与 `--path-spec` **并存**，不替换 |
+| captures 求值注入 | 做，显式 opt-in；默认仍只读 |
+| `slurp()` / `-O json` | **保留，不废弃** |
+| 提取提示（hint） | **不做** |
+| 库接口 | **不承诺稳定库 API、不发布库文档**：`pub` 项（`run` / `parse_pipeline` / `cli`）仅用于内部分层与测试，稳定契约只有 CLI |
+| BrokenPipe 按输入/输出侧区分 | **做（甲方技术复核增列）**：输入侧读错输出 `runtime(1)` 诊断，不再静默返回 0；验收点为输入侧管道破裂时 `rc=1` 且 stderr 有 `runtime` 诊断 |

@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.3.1（Unreleased，下一发布版本）
+
+契约收敛轮。本节改动已在工作树落地；`Cargo.toml` 版本号在发版时统一提升（当前仍为 `0.3.0`）。抽取语义、默认输出格式与 0/1/2 退出码保持不变。
+
+### 破坏性变更与迁移
+
+| 旧行为（0.3.0） | 新行为（0.3.1） | 迁移 |
+|---|---|---|
+| MSRV Rust 1.85 | MSRV Rust 1.88，CI 增加 1.88 `--locked` 构建门禁 | 升级工具链；`cargo build --locked` 可复现 |
+| `--path-spec` 支持 `time:` / `lit:` / 简写 `{%Y-%m-%d}` / `{\d+}`，并做日历与时钟校验 | 只接受显式 `{name:re:...}` / `{name:glob:...}`；**不做日历或时间校验**，未知 kind 与简写在打开目录前返回 `Usage(2)` | 把日期与时间约束写进 `re:` 片段；例如 `time:%Y-%m-%d` 改为 `re:\d{4}-\d{2}-\d{2}`，需排除 02-30 时自行写更严格的片段 |
+| `time:` 捕获附带派生 `ts_fields` 数组 | 不再生成任何派生字段；captures 一律为字符串 | 从 `--with-source` 的 `source.captures.ts` 字符串自行切分，例如 `ux --path-spec ... --with-source -e 'text()' \| jq -r '.source.captures.ts \| split("-") \| .[0]'` 取年份；`ux` 不再生成数组，也不校验日历 |
+| 发现阶段 `read_dir` 打开失败、`ReadDir` 单条目失败、`file_type` 失败静默跳过 | 三类异常各输出一条 warning（`kind=read_dir` / `kind=read_dir_entry` / `kind=file_type`），`--quiet` 可压制 | 静默吞错不再成立；按 warning 定位权限或竞态问题 |
+
+### 明确的能力边界
+
+- captures 是**只读字符串元数据**，只出现在 `--list` 与 `--with-source` 的 `source.captures`，**不参与流水线求值**；DSL 无法引用它们。
+- `--path-spec` 与位置参数互斥；目录结尾的 spec 不隐式追加 `**`；段级剪枝保证不匹配目录不被进入。
+- `slurp()` 与 `-O json` **保留，不废弃**。
+- 库接口**不承诺稳定 API、不发布库文档**：`pub` 项（`run` / `parse_pipeline` / `cli`）仅用于内部分层与测试，稳定契约只有 CLI。新增 `tests/lib_run.rs` 用 `uniextract::run()` 直调验证退出码与诊断，不代表对外承诺 API。
+- 判定按**错误变体**而非 I/O 方向：`AppError::Io(BrokenPipe)` 一律为 0（含输入侧首次 `fill_buf` 与逐行 `read_until` 的裸 IO 错误），`Runtime(String)` 包裹的读错误为 `runtime(1)`。本轮**不改** `source.rs` / `output.rs` / `lib.rs` / `main.rs` 代码，按输入/输出侧区分不属于 0.3.1 契约。
+- `catch_unwind` **无条件**收敛主线程 unwind panic；`--error-format json` 额外保证 stderr 只有结构化诊断。库直调 `run()` 同样收敛，但不继承进程级 panic hook。
+
+### 测试与工程
+
+- `tests/pathspec.rs` 迁移到显式 `re:` / `glob:`；简写、`time:`、`lit:` 改为负向 `Usage(2)` 断言。
+- `src/pathspec.rs` 新增 `validate_re_fragment`：拒绝 `re:` 片段里的顶层 `|` 与不配平括号（否则会逃逸捕获组、让段级剪枝静默失效）；补转义 / 冒号正则 / 嵌套量词单测。三类发现告警抽成 `warn_io` 并补结构化 JSON 与 `--quiet` 压制单测；`--max-depth` 与 `--path-spec` 组合时改为显式 warning。
+- 新增 `tests/pathspec_scenario.rs`（8 项）与 `tests/fixtures/pathmatch/data`（12 个 NativeHeap 夹具）：夹具字节、非法 spec、目录尾不递归、4/12 精确命中、02-30 排除、段级剪枝、3 条 pss 抽取与 `--with-source`、captures 只读与 `--quiet` 对照。
+- 新增 `tests/lib_run.rs`（6 项）：库直调 stdout 纯净、输出侧 BrokenPipe=0、`Runtime` 包裹读失败=1、**输入侧裸 IO BrokenPipe=0 的如实负向用例**、usage 结构化、panic 收敛为 runtime；用全局 Mutex 串行化 panic hook 安装。
+- 旧 Python 校验原型下线，夹具与断言以 Rust 测试为单一真相；`scenarios/pathmatch/generate.py` 改为写入 `tests/fixtures/pathmatch/data`。
+- CI：需要解析依赖的 cargo 步骤一律 `--locked`（`cargo fmt` 不适用）；新增 Rust 1.88 MSRV job（含 `cargo test --locked`）、`fuzz/Cargo.toml` 的 `cargo metadata --locked`（去掉 `--no-deps`）、两个独立门禁脚本 `.github/scripts/check_contract_docs.py`（显式断言必需文件存在、分组扫描过期文案、校验 12 个夹具）与 `.github/scripts/check_test_count.py`（`-- --list` 断言 157 项测试）；删除与 `--all-targets` 重复的 agent 测试步骤。
+- 当前 Rust 测试共 **157 项**（86 单测 + 21 Agent 契约 + 26 CLI + 3 兼容 + 6 库直调 + 7 pathspec + 8 场景），在 Rust 1.88 与 stable 下全部通过。
+
+### 0.4.0 时间表（已定稿）
+
+| 项 | 决定 |
+|---|---|
+| `--path-regex` / `--root` | 做，与 `--path-spec` **并存** |
+| captures 求值注入 | 做，显式 opt-in，默认仍只读 |
+| `slurp()` / `-O json` | **保留，不废弃** |
+| 提取提示（hint） | **不做** |
+| 库接口 | **不承诺稳定库 API、不发布库文档** |
+| BrokenPipe 按输入/输出侧区分 | **做（甲方技术复核增列）**：输入侧读错输出 `runtime(1)` 诊断，不再静默返回 0；验收点为输入侧管道破裂时 `rc=1` 且 stderr 有 `runtime` 诊断 |
+
+> 最后一项由甲方技术第二轮复核要求增列：0.3.1 只做如实文档化与负向测试，未改 I/O 代码，因此把「输入侧读错被静默当成功」留到 0.4.0 闭环，避免把当前行为固化为长期契约。
+
 ## 0.3.0
 
 面向开发者与 AI Agent 的接口面打磨。抽取语义、默认输出格式与既有退出码保持不变。
@@ -18,7 +63,7 @@
 ### 修复
 
 - XPath 未绑定前缀不再触发 `sxd-xpath` panic（rc=101）：编译期返回 `Query(2)` 并提示 `--ns PREFIX=URI`。
-- 增加 `catch_unwind` 兜底：任何意外 panic 转为 `runtime` 诊断（退出 1），JSON 模式下 stderr 保持纯净，不再出现 rc=101。
+- 增加 `catch_unwind` 兜底：主线程 unwind panic 转为 `runtime` 诊断（退出 1），JSON 模式下 stderr 保持纯净（0.3.1 已把该承诺收窄为「无条件收敛 + JSON 模式额外保证 stderr 纯净」，不再作全局 rc=101 断言）。
 - `--max-results` 触顶立即终止：不再继续遍历文件、不再重复报错，`-O json` 不输出残缺聚合数组。
 - 失败运行（`-O json`）清空待写聚合，避免输出看似完整统计的部分数组；jsonl / text 已产出的记录保留。
 - 非 UTF-8 转码路径纳入 `--max-input-size`：原始字节读取带上限，避免转码前无界 `read_to_end` 的 OOM 风险；解码后不再二次套用同一上限（GB18030 会膨胀，曾误拒合法文件）。

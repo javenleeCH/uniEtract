@@ -5,6 +5,23 @@ on:
   pull_request:
 
 jobs:
+  msrv:
+    name: MSRV (Rust 1.88)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: MSRV build with frozen dependencies
+        run: cargo build --locked
+      - name: MSRV tests with frozen dependencies
+        run: cargo test --locked
+      - name: Fuzz manifest resolves under --locked
+        run: >-
+          python -c 'import subprocess; subprocess.run(["cargo", "metadata", "--manifest-path", "fuzz/Cargo.toml", "--locked", "--format-version", "1"], check=True, stdout=subprocess.DEVNULL)'
+
   verify:
     strategy:
       fail-fast: false
@@ -20,17 +37,26 @@ jobs:
         with:
           python-version: '3.x'
       - name: Format
+        # cargo fmt resolves no dependencies, so --locked is not applicable here.
         run: cargo fmt --check
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
-      - name: Tests
-        run: cargo test --all-targets
-      - name: Agent contract tests
-        run: cargo test --test agent
+        run: cargo clippy --all-targets --locked -- -D warnings
+      - name: Tests (includes the agent contract suite)
+        run: cargo test --all-targets --locked
+      - name: Test inventory matches the documented count
+        run: python .github/scripts/check_test_count.py
+      - name: Contract docs, required files and fixture tree
+        # A standalone Python script (not rg, not `python -c` with Chinese
+        # paths) behaves identically under bash and pwsh; a missing document is
+        # a hard failure instead of a zero-match no-op.
+        run: python .github/scripts/check_contract_docs.py
+      - name: Fuzz manifest resolves under --locked
+        run: >-
+          python -c 'import subprocess; subprocess.run(["cargo", "metadata", "--manifest-path", "fuzz/Cargo.toml", "--locked", "--format-version", "1"], check=True, stdout=subprocess.DEVNULL)'
       - name: Distribution metadata
         run: python -c "from pathlib import Path; assert Path('LICENSE').is_file(), 'LICENSE is missing'"
       - name: Release build
-        run: cargo build --release
+        run: cargo build --release --locked
       - name: Sample smoke
         run: python sample/smoke.py
       - name: Sample cases checklist is up to date
