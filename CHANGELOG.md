@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0（未发布）
+
+### 变更
+
+- Agent skill 从 `.codebuddy/skills/ux-extract/` 迁移到 `.agents/skills/ux-extract/`：`.agents/skills/` 是 [Agent Skills 开放规范](https://agentskills.io)的跨客户端通用目录（用户级 `~/.agents/skills/`、项目级 `<project>/.agents/skills/`），不再绑定单一 Agent。`install.py` 的默认 `--user` / `--project` 目标随之改为 `.agents/skills`；`--target` 仍可装进任意 Agent 原生根目录（如 `~/.claude/skills`）。`README.md` 新增「Agent Skill」安装、验证与卸载说明；`dist/ux-extract.zip` 重新打包。
+
 ## 0.3.1 — 2026-11-15
 
 契约收敛轮。`Cargo.toml` / `Cargo.lock` / `ux --version` 均已对齐 `0.3.1`；由 `v0.3.1` tag 经 GitHub Actions 自动构建并发布 Linux / Windows / macOS 预编译包。抽取语义、默认输出格式与 0/1/2 退出码保持不变。

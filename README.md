@@ -248,4 +248,42 @@ git push github v0.3.1                            # 触发 Release workflow
 
 ## Agent Skill
 
-随仓库提供 `.codebuddy/skills/ux-extract/`，供支持 `SKILL.md` 格式的 Agent 加载使用；分发包为 `dist/ux-extract.zip`。一键安装、验证、卸载，以及安装到其他 Agent 的路径说明见 `.codebuddy/skills/ux-extract/INSTALL.md`（该说明也随 zip 分发）。
+随仓库提供 `ux-extract` skill（`.agents/skills/ux-extract/`），教 Agent 用 `ux` 做本地信息抽取：预检、`--list` 先定输入集、七阶段流水线组装、结构化诊断与退出码解读。`.agents/skills/` 是 [Agent Skills 开放规范](https://agentskills.io)约定的**跨客户端通用目录**：遵循规范的 Agent（Claude Code、Codex、Amp、CodeBuddy 等）都会扫描 `~/.agents/skills/`（用户级）与 `<project>/.agents/skills/`（项目级）。
+
+### 安装
+
+分发包为 `dist/ux-extract.zip`。一键安装（需要 Python 3.8+，只用标准库、不联网、不改配置）：
+
+```powershell
+# 情况 A：拿到了 ux-extract.zip
+Expand-Archive -Path .\ux-extract.zip -DestinationPath .
+python ux-extract/scripts/install.py
+
+# 情况 B：clone 了本仓库
+python .agents/skills/ux-extract/scripts/install.py
+```
+
+| 用法 | 结果 |
+|---|---|
+| 不带参数（等价 `--user`） | `~/.agents/skills/ux-extract/`，全项目可用 |
+| `--project` | `<当前目录>/.agents/skills/ux-extract/`，随仓库共享 |
+| `--target DIR` | 装进任意识别 `SKILL.md` 的 Agent 原生根目录 |
+| `--force` / `--uninstall` | 覆盖已装副本 / 卸载 |
+
+Agent 只认自己原生路径时用 `--target`，例如 Claude Code：
+
+```bash
+python3 ux-extract/scripts/install.py --target ~/.claude/skills
+```
+
+无 Python 时手动安装：把 `ux-extract/` 整个目录复制到 Agent 的 skills 根目录，目录名保持 `ux-extract`。
+
+### 验证与触发
+
+```powershell
+python ~/.agents/skills/ux-extract/scripts/ux_probe.py   # 期望 {"ok": true, ...}
+```
+
+预检确认 `ux` 在 PATH 或 `target/release/` 上、长帮助齐全、stdout/stderr 分离。`ux` 不是 skill 的安装前置，但执行抽取任务前需要它。重启或刷新 Agent 后，对它说「用 ux 从这个日志目录里抽出所有 ERROR 消息」即可触发。
+
+完整说明见 `.agents/skills/ux-extract/INSTALL.md`（随 zip 分发）。

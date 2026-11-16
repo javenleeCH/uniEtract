@@ -90,8 +90,8 @@ def resolve_target(args):
     if args.target:
         return Path(args.target).expanduser().resolve()
     if args.project:
-        return Path.cwd() / ".codebuddy" / "skills"
-    return Path.home() / ".codebuddy" / "skills"
+        return Path.cwd() / ".agents" / "skills"
+    return Path.home() / ".agents" / "skills"
 
 
 def main():
@@ -102,12 +102,12 @@ def main():
     scope.add_argument(
         "--user",
         action="store_true",
-        help="install under ~/.codebuddy/skills (default)",
+        help="install under ~/.agents/skills (default, cross-agent convention)",
     )
     scope.add_argument(
         "--project",
         action="store_true",
-        help="install under <cwd>/.codebuddy/skills",
+        help="install under <cwd>/.agents/skills",
     )
     scope.add_argument(
         "--target",
