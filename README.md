@@ -84,17 +84,17 @@ DSL 结构由 `pest` 的 PEG 语法（`src/dsl.pest`）描述，`src/dsl.rs` 负
 
 | 写法 | 含义 |
 |---|---|
-| `{name:re:...}` | Rust regex 片段，产生命名捕获 `name` |
+| `{name:re:...}` | Rust regex 片段，产生命名捕获 `name`；片段内层的命名组 `(?<sub>...)` 也是合法捕获，会一并进 `captures` |
 | `{name:glob:*.txt}` | `*` / `?` 段内通配（不跨 `/`），产生命名捕获 `name` |
 
 - 0.3.1 起**不接受** `time:` / `lit:` / 简写 `{%Y-%m-%d}` / `{\d+}`，也**不做日历或时钟合法性校验**；有效性由调用方写进 `re:` 片段。非法 spec 在打开任何目录之前返回 `Usage(2)`。
 - 命名 captures 是**只读字符串元数据**：出现在 `--list` 与 `--with-source` 的 `source.captures` 里，**不参与流水线求值**（DSL 无法引用），也不生成 `ts_fields` 之类派生字段。
 - 目录结尾的 spec 不会隐式追加 `**`；必须显式写出文件段，例如 `/{file:glob:*.txt}`。
 - 与位置参数 `PATH|GLOB` 互斥；可与 `--exclude`、`--fuzzy`（后置过滤）、`--no-default-ignore` 组合。段级剪枝：不匹配的中间目录根本不会被进入。
-- 发现阶段三类异常（`read_dir` 打开失败、`ReadDir` 单条目失败、`file_type` 失败）现在会输出 warning 而不是静默跳过；`--quiet` 可压制，因此**需要区分零匹配与「丢文件」时不要加 `--quiet`**。
+- 发现阶段三类异常（`read_dir` 打开失败、`ReadDir` 单条目失败、`file_type` 失败）会输出 warning 而不是静默跳过；`--quiet` 可压制，因此**需要区分零匹配与「丢文件」时不要加 `--quiet`**。
 - `glob` 占位不支持字符类（`[...]`，含字面 `]`），需要时改用 `{name:re:...}`；`re:` 片段禁止顶层 `|` 与不配平括号，避免悄悄逃逸捕获组、让段级剪枝静默失效。
-- captures 在 JSON 对象里按名字**字典序**输出（不是 spec 中的出现顺序）；同名捕获在编译期拒绝。
-- `--max-depth` 与 `--path-spec` 组合时会被忽略并输出一条 warning；遍历深度由 spec 的段数决定。
+- captures 在 JSON 对象里按名字**字典序**输出（不是 spec 中的出现顺序）；同名捕获（含嵌套组与显式占位跨段重名）在编译期拒绝；嵌套命名组计入 32 个捕获的预算。
+- `re:` 片段里可以写嵌套命名组拆文件名字段：`{file:re:.*(?<ts>\d{8}_\d{6})_(?<seq>\d+)_hidumper\.txt}` 会产出 `file` / `ts` / `seq` 三个捕获；片段内的冒号（如 `\d{2}:\d{2}`）合法。
 - 转义只支持 `\{` / `\}` / `\\` 三种；其他 `\X` 保留为字面两字符。
 
 ```powershell
@@ -151,6 +151,7 @@ ux --quiet --error-format json -f jsonl -e 'jq(select(.level == "ERROR"))' .\log
 | 空 | 真的零匹配；**或**输入侧管道破裂被按 `AppError::Io(BrokenPipe)` 静默判为成功 | 复核表达式与输入格式（显式 `-f jsonl`、HTML 隐式 `<tbody>` 等）；若输入来自管道，改用文件输入重跑以排除上游提前关闭 |
 | `no input files matched` | glob / 过滤没命中 | 用 `ux --list` 复核输入集 |
 | `binary input skipped` / `incompatible` | 文件被跳过 | 按需加 `--force-text` 或调整首阶段 |
+| `empty file (no records)` | 文件被打开但零字节，不产生任何记录（0.4.0 起警告；空 stdin 不警告） | 与 `--list` 清单对账时把该文件记为「空」而非「缺失」 |
 | `assumed GB18030` | 编码回退 | 显式 `--encoding` 更稳 |
 
 `--quiet` 会隐藏这些 warning：只关心数据且依赖退出码时可加（**管道输入除外**，见下）；需要区分「零匹配」与「文件被跳过」时不要加。**`rc=0` + stdout 空 + stderr 空不能证明输入被完整读取**：输入侧 BrokenPipe 也是这个组合，详见「已知限制」的「退出码 0 不证明输入被完整读取」；管道输入场景应改用文件输入，不要靠 `--quiet` + 退出码判断完整性。
@@ -230,7 +231,7 @@ git push github v0.3.1                            # 触发 Release workflow
 - HTML 容错树会插入隐式 `<tbody>` 并折叠标签/属性名为小写，表达式需按实际 DOM 写。
 - Windows Git Bash / MSYS2 会把 `-e` 里的 `//a`、`//b:book` 当 UNC 路径改写，导致 XPath 静默零匹配。执行前设 `MSYS2_ARG_CONV_EXCL='*'`，或改用 PowerShell。这是 shell 的参数转换，不是 `ux` 的解析问题。
 - DSL 括号嵌套最多 128 层，超限时报错退出 2（不崩溃、不静默截断）；限制只针对嵌套深度，不影响长正则或长 jq filter。
-- `--path-spec` 只做段级结构匹配：不做跨段通配、不做基于 captures 的排序，也不提供 `--sort` / `--max-files` 或提取提示（hint）。manpage 未随发行提供，可用 `--help` 与 `--completions` 替代。
+- `--path-spec` 只做段级结构匹配：不做跨段通配、不做基于 captures 的排序，也不提供 `--sort` / `--max-files` 或提取提示（hint）。`re:` 片段内嵌套命名组拆文件名字段自 0.4.0 起可用（见上文）。manpage 未随发行提供，可用 `--help` 与 `--completions` 替代。
 - **退出码 0 不证明输入被完整读取**：0.3.1 按错误变体判定 BrokenPipe，输入侧管道破裂（首次 `fill_buf` / 逐行读）同样返回 0 且 stderr 为空。Agent / 脚本不能只靠 `rc=0` 判断输入已读完；需要强保证时改用文件输入。按输入/输出侧区分已列入 0.4.0 必修项。
 
 完整契约与 ADR 见 `docs/cli-design.md`；路径匹配的段级剪枝与夹具证据见 `docs/path-spec-design.md`；变更记录与版本路线见 `CHANGELOG.md`。
@@ -242,6 +243,7 @@ git push github v0.3.1                            # 触发 Release workflow
 | `--path-regex` / `--root` | 做，与 `--path-spec` **并存**，不替换 |
 | captures 求值注入 | 做，显式 opt-in；默认仍只读 |
 | `slurp()` / `-O json` | **保留，不废弃** |
+| 嵌套命名组进 captures | **已实现（本轮）**：`re:` 片段内的 `(?<sub>...)` 一并产出捕获；跨段同名编译期拒绝。原计划的「子捕获 + basename 阶段」由本项覆盖 |
 | 提取提示（hint） | **不做** |
 | 库接口 | **不承诺稳定库 API、不发布库文档**：`pub` 项（`run` / `parse_pipeline` / `cli`）仅用于内部分层与测试，稳定契约只有 CLI |
 | BrokenPipe 按输入/输出侧区分 | **做（甲方技术复核增列）**：输入侧读错输出 `runtime(1)` 诊断，不再静默返回 0；验收点为输入侧管道破裂时 `rc=1` 且 stderr 有 `runtime` 诊断 |

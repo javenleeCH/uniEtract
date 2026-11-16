@@ -96,6 +96,7 @@ ux [FLAGS] -e 'stage(...) | stage(...)' [PATH|GLOB|- ...]
 | 空 | 真的零匹配，或输入侧管道破裂被静默判为成功 | 复核表达式与 `-f`；若输入来自管道，改用文件输入重跑 |
 | `no input files matched` | glob / 过滤没命中 | `ux --list` 复核输入集 |
 | `binary input skipped` / `incompatible` | 文件被跳过 | 加 `--force-text` 或调整首阶段 |
+| `empty file (no records)` | 0 字节文件已打开但不产生记录（0.4.0 起；空 stdin 不警告） | 对账时记为「空」而非「缺失」 |
 | `assumed GB18030` | 编码回退 | 显式 `--encoding` |
 
 `--quiet` 会隐藏这些 warning。需要区分「零匹配」与「文件被跳过」时不要加；管道输入场景不要依赖 `--quiet` + 退出码判断完整性。

@@ -45,6 +45,13 @@ impl<'reader> InputSource<'reader> {
             .unwrap_or_else(|| "<stdin>".to_owned());
         // fill_buf never waits for a full buffer, so interactive stdin stays streamable.
         let prefix = reader.fill_buf()?.to_vec();
+        // An empty regular file yields zero records without any diagnostic,
+        // which hides it from inventory reconciliation (a skipped file and a
+        // zero-match file are indistinguishable). Empty stdin stays silent:
+        // a closed pipe is normal, a lost file is not.
+        if prefix.is_empty() && path.is_some() {
+            reporter.warn(&format!("`{label}`: empty file (no records)"));
+        }
         let (encoding, bom_length, assumed) = resolve_encoding(&prefix, cli.encoding, &label)?;
         if let Some(name) = assumed {
             reporter.warn(&format!("`{label}`: assumed {name}"));
@@ -315,6 +322,49 @@ mod tests {
 
     fn cli(args: &[&str]) -> Cli {
         Cli::try_parse_from(args).unwrap()
+    }
+
+    #[test]
+    fn empty_file_warns_but_empty_stdin_stays_silent() {
+        // Reconciliation case from the field report: 35,999 listed vs
+        // 35,998 extracted, one empty file, zero diagnostics. A regular
+        // empty file now warns; empty stdin does not (a closed pipe is
+        // normal, a lost file is not).
+        let path = Some(Arc::new(PathBuf::from("data/empty.txt")));
+        let cli = cli(&["ux", "-e", "text()"]);
+
+        let mut stderr = Vec::new();
+        {
+            let mut reporter = Reporter::new(&mut stderr, ErrorFormat::Text, false);
+            let opened = InputSource::open(
+                Box::new(Cursor::new(Vec::new())),
+                path.clone(),
+                None,
+                &cli,
+                &mut reporter,
+            )
+            .unwrap();
+            assert!(matches!(opened, Opened::Ready(_)));
+        }
+        assert_eq!(
+            String::from_utf8(stderr).unwrap(),
+            "ux: warning: `data/empty.txt`: empty file (no records)\n"
+        );
+
+        let mut stderr = Vec::new();
+        {
+            let mut reporter = Reporter::new(&mut stderr, ErrorFormat::Text, false);
+            let opened = InputSource::open(
+                Box::new(Cursor::new(Vec::new())),
+                None,
+                None,
+                &cli,
+                &mut reporter,
+            )
+            .unwrap();
+            assert!(matches!(opened, Opened::Ready(_)));
+        }
+        assert!(stderr.is_empty());
     }
 
     fn open(bytes: &[u8], args: &[&str]) -> (InputSource<'static>, Vec<u8>) {

@@ -7,6 +7,8 @@
 - Agent skill 从 `.codebuddy/skills/ux-extract/` 迁移到 `.agents/skills/ux-extract/`：`.agents/skills/` 是 [Agent Skills 开放规范](https://agentskills.io)的跨客户端通用目录（用户级 `~/.agents/skills/`、项目级 `<project>/.agents/skills/`），不再绑定单一 Agent。`install.py` 的默认 `--user` / `--project` 目标随之改为 `.agents/skills`；`--target` 仍可装进任意 Agent 原生根目录（如 `~/.claude/skills`）。`README.md` 新增「Agent Skill」安装、验证与卸载说明；`dist/ux-extract.zip` 重新打包。
 - `ux-extract.zip` 成为 GitHub Release 固定资产：`package_release.py --collect` 新增 `--extra-file`，Release workflow 发布时把 `dist/ux-extract.zip` 连同校验和一并上传（`SHA256SUMS` 含其条目）。下载地址：`https://github.com/javenleeCH/uniEtract/releases/latest/download/ux-extract.zip`（或 `releases/download/v<版本>/ux-extract.zip` 钉住版本）。
 - **修复（Windows）**：`--with-source` 的 `source.path` 改为与 `--list` 一致的正斜杠输出。此前 Windows 上 `--list` 输出 `D:/OH/...` 而 `source.path` 输出 `D:\OH\...`，两个稳定契约输出无法直接对账（`comm` 级联全失配）。新增 `model.rs` 回归测试；Unix 行为不变（文件名含字面 `\` 时与 `--list` 的既有归一化同样处理）。
+- **新增（`--path-spec`）**：`re:` 片段内的嵌套命名组（如 `.*(?<ts>\d{8}_\d{6})`）现在与显式占位一并产出捕获。0.3.1 会静默丢弃它们——字段从文件名里拆出来却拿不到，是实测反馈的 P1 问题。跨段同名（含嵌套组与显式占位重名）在打开目录前 `Usage(2)`；嵌套组计入 32 捕获预算；片段内冒号（`\d{2}:\d{2}`）行为不变（本就合法）。
+- **新增**：空文件（0 字节、有路径）在打开时输出一条 warning `empty file (no records)`；空 stdin 不警告。此前 35,999 清单 vs 35,998 结果的差 1 只能靠人工对账定位。`--quiet` 可压制；`--error-format json` 下为标准 warning 对象。
 
 ## 0.3.1 — 2026-11-15
 

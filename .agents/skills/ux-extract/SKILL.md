@@ -72,7 +72,7 @@ Read `code` and `exit_code` from stderr, not human wording. Use the decision tab
 
 ## Troubleshooting
 
-- Zero matches with exit 0: re-run `ux --list`, check `-f`, and check HTML implicit `tbody` and lowercase tag names.
+- Zero matches with exit 0: re-run `ux --list`, check `-f`, and check HTML implicit `tbody` and lowercase tag names. A `empty file (no records)` warning means a 0-byte file was opened (reconcile as empty, not missing); nested named groups in `re:` fragments join captures since 0.4.0.
 - `Usage(2)` before any file opens: validate `--path-spec` placeholders and argument combinations.
 - `query` / `Query(2)`: check stage names, raw-string delimiters and XPath prefix bindings.
 - Warning `assumed GB18030`: pass an explicit `--encoding` for deterministic transcoding.

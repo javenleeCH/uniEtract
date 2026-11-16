@@ -297,6 +297,29 @@ pub fn compile(spec: &str) -> Result<Compiled, AppError> {
                 "segment {segment_number}: bad regex fragment: {error}"
             ))
         })?;
+        // Nested named groups inside an `re:` fragment are captures too.
+        // Dropping them silently (0.3.1 behavior) hid file-embedded fields
+        // from `--list` and `--with-source`. capture_names() yields every
+        // named group, including the explicit placeholder itself, so skip
+        // names already registered for this segment. The regex crate
+        // rejects duplicates within one segment; only cross-segment
+        // collisions and the 32-capture budget need checking here.
+        for nested in regex.capture_names().flatten() {
+            if captures.iter().any(|registered| registered == nested) {
+                continue;
+            }
+            if capture_names.contains(&nested.to_owned()) {
+                return Err(usage(format!(
+                    "segment {segment_number}: duplicate capture name `{nested}`"
+                )));
+            }
+            if capture_names.len() >= 32 {
+                return Err(usage("too many captures (limit 32)"));
+            }
+            let nested = nested.to_owned();
+            captures.push(nested.clone());
+            capture_names.push(nested);
+        }
         segments.push(Segment { regex, captures });
     }
     Ok(Compiled { segments })
@@ -602,6 +625,44 @@ mod tests {
             assert!(
                 lines[index]["message"].as_str().unwrap().contains(kind),
                 "{json}"
+            );
+        }
+    }
+    #[test]
+    fn nested_named_groups_are_captured_not_dropped() {
+        // Field report: ts/seq matched but silently vanished from captures,
+        // leaving file-embedded fields unreachable. They are captures now.
+        let spec = r"data/{file:re:.*(?<ts>\d{8}_\d{6})_(?<seq>\d+)_hidumper\.txt}";
+        let compiled = compile(spec).unwrap();
+        let segment = &compiled.segments[1];
+        let hit = segment
+            .regex
+            .captures("20261114_194549_0001_hidumper.txt")
+            .unwrap();
+        let json = capture_json(segment, &hit);
+        assert_eq!(
+            json["file"],
+            JsonValue::String("20261114_194549_0001_hidumper.txt".to_owned())
+        );
+        assert_eq!(json["ts"], JsonValue::String("20261114_194549".to_owned()));
+        assert_eq!(json["seq"], JsonValue::String("0001".to_owned()));
+    }
+
+    #[test]
+    fn nested_group_name_colliding_across_segments_is_rejected() {
+        // Same-segment duplicates fail in Regex::new already; cross-segment
+        // collisions must fail in compile so captures stay unambiguous.
+        for spec in [
+            r"data/{ts:re:\d+}/{y:re:(?<ts>\d+)}.txt",
+            r"data/{x:re:(?<id>\d+)}/{y:re:(?<id>\d+)}.txt",
+        ] {
+            let error = match compile(spec) {
+                Err(error) => error.to_string(),
+                Ok(_) => panic!("expected a Usage(2) error for {spec}"),
+            };
+            assert!(
+                error.contains("duplicate capture name"),
+                "{spec} -> {error}"
             );
         }
     }

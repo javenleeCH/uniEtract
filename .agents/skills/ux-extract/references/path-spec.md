@@ -19,8 +19,8 @@ spec 是 `/` 分隔的段序列，每段由字面片段与占位符组成。占�
 data/{ts:re:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}}_SRRG/render_service/{mins:re:\d+}min/hidumper/txt/{file:glob:*.txt}
 ```
 
-- 捕获名必须是合法正则组名且全局唯一；重名在编译期拒绝。
-- 段数 ≤ 64，captures ≤ 32。
+- 捕获名必须是合法正则组名且全局唯一；重名（含嵌套组与显式占位跨段撞名）在编译期拒绝。
+- 段数 ≤ 64，captures ≤ 32（嵌套命名组计入捕获预算）。
 - 转义只支持 `\{` / `\}` / `\\`；其他 `\X` 保留为字面两字符。
 - 目录结尾的 spec **不会**隐式追加 `**`；末段按文件段匹配。必须显式写出 `/{file:glob:*.txt}`。
 
@@ -51,7 +51,7 @@ data/{ts:re:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}}_SRRG/render_service/{mins:re:\d
 ## captures
 
 `capture_json()` 返回纯字符串 `BTreeMap`：
-
+- 0.4.0 起，`re:` 片段内的嵌套命名组也是捕获：`{file:re:.*(?<ts>\d{8}_\d{6})_(?<seq>\d+)_hidumper\.txt}` 产出 `file` / `ts` / `seq` 三个键。0.3.1 会静默丢弃内层组——升级前写的 spec 可能突然多出键，消费端按名字取值不受影响。
 - 键按名字**字典序**输出，不是 spec 中的出现顺序。
 - 只出现在 `--list` 的输入清单与 `--with-source` 的 `source.captures` 里。
 - **不参与流水线求值**：DSL、`jq`、`xpath` 都拿不到；不生成 `ts_fields` 之类派生字段。

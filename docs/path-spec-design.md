@@ -72,6 +72,7 @@ data/{ts:re:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}}_SRRG/{svc:glob:*}/txt/{f:glob:*
 
 - 键按名字字典序输出，与 spec 中的出现顺序无关。
 - 多段捕获按遍历顺序合并到同一个 map，重名已在编译期拒绝。
+- 0.4.0 起，`re:` 片段内的嵌套命名组（`{file:re:.*(?<ts>\d{8}_\d{6})}` 里的 `ts`）也是捕获：`Regex::capture_names()` 枚举全部命名组，显式占位名跳过、嵌套名注册进同一 map；跨段重名（含嵌套组与显式占位撞名）在 `compile()` 里 `Usage(2)`，同段重名由 regex crate 自身拒绝。0.3.1 曾静默丢弃嵌套组——匹配成功但字段不可见（实测反馈 P1）。
 - captures 挂到 `Origin.captures`，仅通过 `--list` 的输入清单与 `--with-source` 的来源对象暴露。
 - 求值阶段（DSL、`jq`、`xpath` 等）拿不到 captures；它们不是记录字段，也不会被隐式注入。
 
@@ -105,7 +106,7 @@ data/{ts:re:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}}_SRRG/{svc:glob:*}/txt/{f:glob:*
 
 | 测试 | 项数 | 内容 |
 |---|---|---|
-| `src/pathspec.rs` 内嵌单测 | 9 | 编译、转义与冒号正则、量词不闭合占位、正则逃逸拒绝、三类告警的文本/JSON/quiet 行为、目录尾不递归、非法 spec 提前失败 |
+| `src/pathspec.rs` 内嵌单测 | 11 | 编译、转义与冒号正则、量词不闭合占位、正则逃逸拒绝、三类告警的文本/JSON/quiet 行为、目录尾不递归、非法 spec 提前失败、嵌套命名组进 captures、跨段重名 `Usage(2)` |
 | `tests/pathspec.rs` | 7 | CLI 端到端：合法 spec、`--list` captures、`--with-source`、非法 kind 的 `Usage(2)`、简写负向用例 |
 | `tests/pathspec_scenario.rs` | 8 | 12 夹具的字节集合、非法 spec、目录尾不递归、4/12 精确命中、显式 `re:` 排除 `02-30`、剪枝计数、3 条 pss 抽取与 `--with-source`、captures 子对象字节相等与 `--quiet` / glob / fuzzy 对照组 |
 
@@ -123,6 +124,7 @@ CI 由 `.github/scripts/check_contract_docs.py` 校验夹具数量恰为 12，�
 | B6 | 目录结尾不追加 `**` | 显式语法，避免意外递归整棵树 |
 | B7 | 夹具与断言迁移到 Rust 测试 | 单一事实源，无需 Python 解释器与 shell glob |
 | B8 | `--max-depth` 在该模式下告警而非静默忽略 | 参数被忽略必须可观测 |
+| B9 | 嵌套命名组并入 captures，跨段重名编译期拒绝 | 静默丢弃会让「文件名拆字段」这一主用例拿到一半结果；拒绝重名保证 map 键无歧义 |
 
 ## 9. 文档索引
 
