@@ -250,9 +250,28 @@ git push github v0.3.1                            # 触发 Release workflow
 
 随仓库提供 `ux-extract` skill（`.agents/skills/ux-extract/`），教 Agent 用 `ux` 做本地信息抽取：预检、`--list` 先定输入集、七阶段流水线组装、结构化诊断与退出码解读。`.agents/skills/` 是 [Agent Skills 开放规范](https://agentskills.io)约定的**跨客户端通用目录**：遵循规范的 Agent（Claude Code、Codex、Amp、CodeBuddy 等）都会扫描 `~/.agents/skills/`（用户级）与 `<project>/.agents/skills/`（项目级）。
 
+### 下载
+
+`ux-extract.zip` 随每个版本发布到 GitHub Releases（资产名固定不变，`SHA256SUMS` 中有对应校验和条目）。固定取最新版用 `releases/latest/download`（GitHub 自动跳到最新 release）；需要钉住版本时把 `latest/download` 换成 `download/v<版本>`：
+
+```powershell
+# PowerShell：固定取最新版
+Invoke-WebRequest -Uri "https://github.com/javenleeCH/uniEtract/releases/latest/download/ux-extract.zip" -OutFile ux-extract.zip
+```
+
+```bash
+# bash / macOS / Linux；或直接在浏览器打开同一 URL
+curl -LO https://github.com/javenleeCH/uniEtract/releases/latest/download/ux-extract.zip
+
+# 钉住具体版本，例如 v0.3.1
+curl -LO https://github.com/javenleeCH/uniEtract/releases/download/v0.3.1/ux-extract.zip
+```
+
+下载后可按该版本 `SHA256SUMS` 中的 `ux-extract.zip` 条目校验哈希（Linux `sha256sum`、macOS `shasum -a 256`、Windows `Get-FileHash -Algorithm SHA256`）。已 clone 仓库时无需下载：直接用仓库内的 `dist/ux-extract.zip` 或 `.agents/skills/ux-extract/`。
+
 ### 安装
 
-分发包为 `dist/ux-extract.zip`。一键安装（需要 Python 3.8+，只用标准库、不联网、不改配置）：
+一键安装（需要 Python 3.8+，只用标准库、不联网、不改配置）：
 
 ```powershell
 # 情况 A：拿到了 ux-extract.zip

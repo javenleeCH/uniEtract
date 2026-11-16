@@ -120,6 +120,20 @@ def collect(args):
         print("no *.sha256 files found; nothing to publish")
         return 1
 
+    staged = set()
+    for raw in args.extra_file or []:
+        source = Path(raw)
+        if not source.is_file():
+            print(f"missing extra file: {raw}")
+            return 1
+        if source.name in staged or any(name == source.name for name, _ in sums):
+            print(f"extra file already checksummed: {source.name}")
+            return 1
+        staged_file = dest / source.name
+        shutil.copy2(source, staged_file)
+        sums.append((source.name, sha256(staged_file)))
+        staged.add(source.name)
+
     targets = [
         item.strip()
         for item in os.environ.get("RELEASE_TARGETS", "").split(",")
@@ -139,12 +153,13 @@ def collect(args):
             if len(matches) != 1:
                 print(f"expected exactly one archive for {target}, got {matches}")
                 return 1
-        extra = names - allowed
-        if extra:
-            print(f"unexpected archives: {sorted(extra)}")
+        unexpected = names - allowed - staged
+        if unexpected:
+            print(f"unexpected archives: {sorted(unexpected)}")
             return 1
-        if len(sums) != len(targets):
-            print(f"expected {len(targets)} archives, got {len(sums)}")
+        expected_count = len(targets) + len(staged)
+        if len(sums) != expected_count:
+            print(f"expected {expected_count} archives, got {len(sums)}")
             return 1
 
     (dest / "SHA256SUMS").write_text(
@@ -162,6 +177,7 @@ def main():
     parser.add_argument("--binary")
     parser.add_argument("--format", choices=("zip", "tar.gz"))
     parser.add_argument("--output-dir", default="dist/release")
+    parser.add_argument("--extra-file", action="append", help="stage an extra file (e.g. dist/ux-extract.zip) into the release with its checksum")
     parser.add_argument("--collect", action="store_true")
     args = parser.parse_args()
     return collect(args) if args.collect else package(args)

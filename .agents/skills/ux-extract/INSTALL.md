@@ -107,8 +107,8 @@ python3 ux-extract/scripts/install.py --target ~/.claude/skills
 
 ## 分发
 
-- 分发包：`dist/ux-extract.zip`（仓库内），或 GitHub 仓库 `javenleeCH/uniEtract` 的 release / 仓库文件。
-- 仓库内的 skill 源：`.agents/skills/ux-extract/`。
+- 分发包：GitHub Releases 每个版本的资产 `ux-extract.zip`，固定最新版下载地址为 `https://github.com/javenleeCH/uniEtract/releases/latest/download/ux-extract.zip`（校验和在该版本 `SHA256SUMS` 里）。
+- 仓库内的 skill 源：`.agents/skills/ux-extract/`（对应 `dist/ux-extract.zip`）。
 - 重新打包（维护者）：
 
   ```powershell

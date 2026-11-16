@@ -85,7 +85,7 @@ jobs:
           path: dist/release
           merge-multiple: true
       - name: Aggregate and verify checksums
-        run: python .github/scripts/package_release.py --collect --version ${{ steps.release.outputs.version }} --output-dir dist/release
+        run: python .github/scripts/package_release.py --collect --version ${{ steps.release.outputs.version }} --output-dir dist/release --extra-file dist/ux-extract.zip
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
