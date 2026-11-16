@@ -73,7 +73,7 @@ DSL 结构由 `pest` 的 PEG 语法（`src/dsl.pest`）描述，`src/dsl.rs` 负
 - 编码：`--encoding utf-8|utf-16le|utf-16be|gbk|gb18030|auto`。BOM 会被剥离；`auto` 回退 GB18030 时会在 stderr 说明。UTF-16 不会被误判为二进制。转码前的原始字节也受 `--max-input-size` 约束，解码后不再二次套用同一上限。
 - 路径：文件、目录（递归）、glob、`-`（stdin）。目录默认忽略 `.git`/`target`/`node_modules` 等；`--exclude GLOB`、`--no-default-ignore`、`--max-depth` 控制范围；`--fuzzy QUERY` 是后置过滤，不做目录剪枝。`--list`（别名 `--dry-run`）只输出待处理清单而不读文件；`--no-stdin` 显式拒绝 stdin。输出顺序按相对路径字典序，处理永远串行。
 - 输出：`-O jsonl`（默认，每行紧凑 JSON）、`-O text`（原样文本）、`-O json`（聚合成数组，默认缩进 2 空格，`--compact` 关闭）。换行恒为 LF。
-- `--with-source` 包成 `{value, source:{path,line,record}}`；与 `-O text` 互斥。
+- `--with-source` 包成 `{value, source:{path,line,record}}`；与 `-O text` 互斥。`source.path` 与 `--list` 的 `path` 一致使用 `/` 分隔符（Windows 上也如此），两份输出可直接对账。
 - 体积：`--max-input-size`（整文档格式）、`--max-record-size`（单行/单记录/切分片段）。`0` 表示不限。
 - 结果：`--max-results N` 在第 N+1 条时报错退出 1，立即终止且不输出残缺聚合，不静默截断。
 - 诊断：`--error-format text|json`（默认 text）控制 stderr 编码；`--quiet`（别名 `--silent`）压制 warning，错误始终输出。

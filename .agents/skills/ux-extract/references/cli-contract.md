@@ -24,7 +24,7 @@ ux [FLAGS] -e 'stage(...) | stage(...)' [PATH|GLOB|- ...]
 | `--error-format` | `text`（默认）\| `json` |
 | `--quiet`, `--silent` | 只压 warning，错误照常输出 |
 | `--no-stdin` | 完全拒绝 stdin（隐式或 `-`），CI / agent 必加 |
-| `--with-source` | 输出 `{value, source:{path,line,record,captures}}`；与 `-O text` 互斥 |
+| `--with-source` | 输出 `{value, source:{path,line,record,captures}}`；与 `-O text` 互斥。`source.path` 与 `--list` 的 `path` 一致使用 `/` 分隔符，可直接对账 |
 | `--fuzzy QUERY` | 对归一化相对路径做后置模糊过滤（不做目录剪枝） |
 | `--exclude GLOB` | 追加排除 glob，可重复 |
 | `--no-default-ignore` | 关闭默认忽略表（`.git`、`.hg`、`.svn`、`target`、`node_modules`、`.venv`、`__pycache__`、`.trae`） |

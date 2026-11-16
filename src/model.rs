@@ -117,7 +117,10 @@ pub fn source_json(origin: &Origin) -> JsonValue {
         origin
             .path
             .as_ref()
-            .map(|path| JsonValue::String(path.to_string_lossy().into_owned()))
+            // `--list` (lib.rs) emits forward slashes; `source.path` must join
+            // with it. Windows PathBufs would otherwise serialize with `\`,
+            // and cross-referencing the two outputs fails wholesale.
+            .map(|path| JsonValue::String(path.to_string_lossy().replace('\\', "/")))
             .unwrap_or(JsonValue::Null),
     );
     source.insert(
@@ -135,4 +138,21 @@ pub fn source_json(origin: &Origin) -> JsonValue {
         source.insert("captures".to_owned(), (**captures).clone());
     }
     source.into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn source_path_uses_forward_slashes_like_list_output() {
+        // A backslash-bearing path stays a single PathBuf entry on Unix, so
+        // this regression test is meaningful on every platform.
+        let origin = Origin::new(
+            Some(Arc::new(PathBuf::from(r"D:\OH\group\case\dump.txt"))),
+            1,
+        );
+        let json = source_json(&origin);
+        assert_eq!(json["path"].as_str(), Some("D:/OH/group/case/dump.txt"));
+    }
 }

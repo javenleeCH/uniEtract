@@ -6,6 +6,7 @@
 
 - Agent skill 从 `.codebuddy/skills/ux-extract/` 迁移到 `.agents/skills/ux-extract/`：`.agents/skills/` 是 [Agent Skills 开放规范](https://agentskills.io)的跨客户端通用目录（用户级 `~/.agents/skills/`、项目级 `<project>/.agents/skills/`），不再绑定单一 Agent。`install.py` 的默认 `--user` / `--project` 目标随之改为 `.agents/skills`；`--target` 仍可装进任意 Agent 原生根目录（如 `~/.claude/skills`）。`README.md` 新增「Agent Skill」安装、验证与卸载说明；`dist/ux-extract.zip` 重新打包。
 - `ux-extract.zip` 成为 GitHub Release 固定资产：`package_release.py --collect` 新增 `--extra-file`，Release workflow 发布时把 `dist/ux-extract.zip` 连同校验和一并上传（`SHA256SUMS` 含其条目）。下载地址：`https://github.com/javenleeCH/uniEtract/releases/latest/download/ux-extract.zip`（或 `releases/download/v<版本>/ux-extract.zip` 钉住版本）。
+- **修复（Windows）**：`--with-source` 的 `source.path` 改为与 `--list` 一致的正斜杠输出。此前 Windows 上 `--list` 输出 `D:/OH/...` 而 `source.path` 输出 `D:\OH\...`，两个稳定契约输出无法直接对账（`comm` 级联全失配）。新增 `model.rs` 回归测试；Unix 行为不变（文件名含字面 `\` 时与 `--list` 的既有归一化同样处理）。
 
 ## 0.3.1 — 2026-11-15
 
