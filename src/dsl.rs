@@ -386,4 +386,22 @@ mod tests {
         let error = parse("jq(.a | | text()").err().unwrap().to_string();
         assert!(error.contains("invalid pipeline at byte"), "{error}");
     }
+
+    #[test]
+    fn unterminated_raw_string_then_deep_parens_is_a_query_error_not_a_abort() {
+        // Regression for a review finding: `check_nesting` `break`s on an
+        // unterminated raw string, so the hundreds of trailing `(` are not
+        // depth-counted. The grammar must still reject this input *without*
+        // recursing into `group` (which would overflow the stack and abort the
+        // process, bypassing 0/1/2). The unterminated `"` blocks `plain`/`group`,
+        // so pest backtracks to "expected stage" — pin that safe behavior.
+        let mut input = String::from("re(r#\"");
+        input.push_str(&"(".repeat(2000));
+        let error = parse(&input).expect_err("must be a Query error, not an abort");
+        assert_eq!(error.exit_code(), 2, "{error}");
+        assert!(
+            error.to_string().contains("invalid pipeline at byte"),
+            "{error}"
+        );
+    }
 }

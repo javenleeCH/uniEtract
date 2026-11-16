@@ -259,6 +259,123 @@ fn binary_input_is_skipped_with_warning() {
 }
 
 #[test]
+fn force_text_bypasses_binary_detection() {
+    // stdin: the NUL byte would normally trip the binary guard, but
+    // --force-text reads it as text instead of skipping it.
+    let mut stdin = ux();
+    stdin.args([
+        "-f",
+        "text",
+        "--text-mode",
+        "raw",
+        "--force-text",
+        "-O",
+        "text",
+        "-e",
+        "text()",
+    ]);
+    stdin.write_stdin(b"a\0b".to_vec());
+    let output = stdin.assert().success().get_output().clone();
+    assert_eq!(output.stdout, b"a\0b\n");
+
+    // Explicit binary file: --force-text reads it instead of rejecting it.
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("bin.dat");
+    fs::write(&path, b"x\0y").unwrap();
+    let mut explicit = ux();
+    explicit.args([
+        "-f",
+        "text",
+        "--text-mode",
+        "raw",
+        "--force-text",
+        "-O",
+        "text",
+        "-e",
+        "text()",
+        path.to_str().unwrap(),
+    ]);
+    let out = explicit.assert().success().get_output().clone();
+    assert_eq!(out.stdout, b"x\0y\n");
+}
+
+#[test]
+fn strict_stops_at_the_first_file_error() {
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join("a_good.json"), "{\"n\":1}").unwrap();
+    fs::write(dir.path().join("b_bad.json"), "{oops").unwrap();
+    fs::write(dir.path().join("c_good.json"), "{\"n\":3}").unwrap();
+
+    // Non-strict: continues past the bad file and still processes c_good.
+    ux().args([
+        "-f",
+        "json",
+        "-O",
+        "text",
+        "-e",
+        "jq(.n)",
+        dir.path().to_str().unwrap(),
+    ])
+    .assert()
+    .code(1)
+    .stdout("1\n3\n")
+    .stderr(predicate::str::contains("invalid JSON"));
+
+    // Strict: stops at b_bad and never reaches c_good.
+    ux().args([
+        "-f",
+        "json",
+        "--strict",
+        "-O",
+        "text",
+        "-e",
+        "jq(.n)",
+        dir.path().to_str().unwrap(),
+    ])
+    .assert()
+    .code(1)
+    .stdout("1\n")
+    .stderr(predicate::str::contains("invalid JSON"));
+}
+
+#[test]
+fn no_default_ignore_reincludes_ignored_directories() {
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join("keep.txt"), "keep").unwrap();
+    fs::create_dir_all(dir.path().join("target")).unwrap();
+    fs::write(dir.path().join("target/generated.txt"), "gen").unwrap();
+
+    // Default: target/ is pruned.
+    ux().args([
+        "-f",
+        "text",
+        "-O",
+        "text",
+        "-e",
+        "text()",
+        dir.path().to_str().unwrap(),
+    ])
+    .assert()
+    .success()
+    .stdout("keep\n");
+
+    // --no-default-ignore: target/ contents are included.
+    ux().args([
+        "-f",
+        "text",
+        "--no-default-ignore",
+        "-O",
+        "text",
+        "-e",
+        "text()",
+        dir.path().to_str().unwrap(),
+    ])
+    .assert()
+    .success()
+    .stdout("keep\ngen\n");
+}
+
+#[test]
 fn size_limits_report_clear_errors() {
     ux().args(["-f", "json", "--max-input-size", "3", "-e", "text()"])
         .write_stdin("{\"a\":1}")

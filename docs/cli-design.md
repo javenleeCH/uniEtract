@@ -133,13 +133,13 @@ main → Cli::parse → run(cli, stdin, stdout, stderr)
 
 ## 7. 测试与门禁
 
-Rust 测试共 **158 项**：
+Rust 测试共 **167 项**：
 
 | 位置 | 项数 | 覆盖 |
 |---|---|---|
-| `src/*` 内嵌单测 | 86 | 各模块单元行为，含 `pathspec.rs` 9 项 |
+| `src/*` 内嵌单测 | 92 | 各模块单元行为，含 `pathspec.rs` 11 项 |
 | `tests/agent.rs` | 21 | Agent 契约：诊断、quiet、list、no-stdin、completions、TTY、帮助文本 |
-| `tests/cli.rs` | 27 | 端到端管道、格式、错误码、`--help` 的 PATH SPEC / ROADMAP 文案 |
+| `tests/cli.rs` | 30 | 端到端管道、格式、错误码、`--help` 的 PATH SPEC / ROADMAP 文案 |
 | `tests/jq_compat.rs` | 3 | jq 兼容性夹具 |
 | `tests/lib_run.rs` | 6 | 库直调 `run()`：stdout 纯净、BrokenPipe 两类变体、usage、panic 收敛 |
 | `tests/pathspec.rs` | 7 | `--path-spec` CLI 端到端 |
@@ -149,7 +149,7 @@ Rust 测试共 **158 项**：
 
 - `sample/smoke.py` 45 条冒烟；`sample/export_cases.py --check` 保证 `sample/CASES.md` 与用例同步。
 - `.github/scripts/check_contract_docs.py`：断言必需文件存在、扫描过期契约文案、校验 12 个 NativeHeap 夹具。
-- `.github/scripts/check_test_count.py`：以 `cargo test -- --list` 的汇总行统计测试数并锚定 158。
+- `.github/scripts/check_test_count.py`：以 `cargo test -- --list` 的汇总行统计测试数并锚定 167。
 - `.github/scripts/check_fuzz_manifest.py`：`cargo metadata --manifest-path fuzz/Cargo.toml --locked --format-version 1`。
 - `.github/workflows/ci.yml`：双 OS `verify`（fmt / clippy `-D warnings` / test / release / smoke / 三个 Python 门禁）与 Rust 1.88 `msrv` job；工具链固定为 1.88，避免 `-D warnings` 被新 lint 破坏；无 `python -c` 内联，bash 与 pwsh 行为一致。
 

@@ -111,7 +111,10 @@ impl AppError {
                 origin
                     .path
                     .as_ref()
-                    .map(|path| JsonValue::String(path.to_string_lossy().into_owned()))
+                    // `--list` (lib.rs) and `source.path` (model.rs) both emit
+                    // forward slashes; the eval diagnostic `path` must join them
+                    // so an Agent can reconcile all three outputs on Windows.
+                    .map(|path| JsonValue::String(path.to_string_lossy().replace('\\', "/")))
                     .unwrap_or(JsonValue::Null),
             );
             object.insert(
@@ -172,6 +175,23 @@ mod tests {
         assert_eq!(diagnostic["path"], "a.json");
         assert_eq!(diagnostic["line"], 7);
         assert_eq!(diagnostic["record"], 3);
+    }
+
+    #[test]
+    fn eval_diagnostic_path_uses_forward_slashes_like_list_and_source() {
+        // `--list` and `source.path` normalize `D:\x` -> `D:/x`; the eval
+        // diagnostic must match so the three outputs reconcile on Windows.
+        let origin = Origin {
+            path: Some(Arc::new(PathBuf::from(r"D:\OH\group\case\dump.txt"))),
+            line: None,
+            record: 1,
+            captures: None,
+        };
+        let diagnostic = AppError::eval(&origin, "jq", "boom").diagnostic();
+        assert_eq!(
+            diagnostic["path"].as_str(),
+            Some("D:/OH/group/case/dump.txt")
+        );
     }
 
     #[test]
