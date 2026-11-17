@@ -1,6 +1,6 @@
 [package]
 name = "uniextract"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Composable JSON, XPath and regex extraction CLI"

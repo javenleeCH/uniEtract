@@ -1,4 +1,4 @@
-# `--path-spec` 结构化路径匹配设计（0.3.1 实现状态）
+# `--path-spec` 结构化路径匹配设计（0.4.0 实现状态）
 
 > 实现位于 `src/pathspec.rs`；用户文档见 `README.md` 的 PATH SPEC 段与 `ux --help`；夹具与断言见 `tests/pathspec_scenario.rs`、`tests/pathspec.rs` 和 `tests/fixtures/pathmatch/data`；CLI 整体设计见 `docs/cli-design.md`。
 

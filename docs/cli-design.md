@@ -1,4 +1,4 @@
-# ux CLI 设计（0.3.1 实现状态）
+# ux CLI 设计（0.4.0 实现状态）
 
 > 本文描述当前代码的实际设计，是定稿说明而非提案。用户手册与 Agent 契约见 `README.md` 和 `ux --help`；变更记录与版本路线见 `CHANGELOG.md`；结构化路径匹配的独立设计见 `docs/path-spec-design.md`。
 
@@ -28,7 +28,7 @@
 | 项 | 值 |
 |---|---|
 | crate / 二进制 | `uniextract` / `ux` |
-| `Cargo.toml` version | `0.3.1`（由 `v0.3.1` tag 发版；`Cargo.lock` 与 `ux --version` 同步） |
+| `Cargo.toml` version | `0.4.0`（由 `v0.4.0` tag 发版；`Cargo.lock` 与 `ux --version` 同步） |
 | edition / MSRV | `2024` / Rust `1.88` |
 | 依赖锁定 | `Cargo.lock` 与 `fuzz/Cargo.lock`，CI 全量 `--locked` |
 | 许可 | MIT |
