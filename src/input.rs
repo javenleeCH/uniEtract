@@ -285,11 +285,19 @@ fn next_line(
 ) -> Result<Option<String>, AppError> {
     let mut bytes = Vec::new();
     let read = if limit == 0 {
-        reader.read_until(b'\n', &mut bytes)?
+        reader.read_until(b'\n', &mut bytes)
     } else {
         let mut taken = (&mut *reader).take(limit.saturating_add(1));
-        taken.read_until(b'\n', &mut bytes)?
-    };
+        taken.read_until(b'\n', &mut bytes)
+    }
+    // An input-side read failure is a runtime error, not a normal pipe
+    // termination (that distinction belongs to output writes only).
+    .map_err(|error| {
+        AppError::Runtime(format!(
+            "{}: cannot read input: {error}",
+            base.at_line(line_number)
+        ))
+    })?;
     if read == 0 {
         return Ok(None);
     }

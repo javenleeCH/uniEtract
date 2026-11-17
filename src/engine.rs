@@ -118,7 +118,7 @@ impl Pipeline {
         let stage = &self.stages[index];
         let origin = item.origin.clone();
         let values = stage
-            .evaluate(item.value)
+            .evaluate_with_origin(item.value, Some(&origin))
             .map_err(|message| AppError::eval(&origin, stage.name(), message))?;
         for value in values {
             self.execute_from(index + 1, to, Item::new(value, origin.clone()), sink)?;

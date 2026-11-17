@@ -20,7 +20,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use cli::{Cli, OutputMode};
+use cli::{Cli, InputFormat, OutputMode};
 use diagnostic::Reporter;
 use discover::{Input, discover};
 use engine::{Pipeline, Relay};
@@ -85,21 +85,49 @@ fn run_inner(
         for input in inputs {
             let entry = match input {
                 Input::Stdin => json!({ "type": "stdin", "path": null }),
-                Input::File(path) => json!({
-                    "type": "file",
-                    "path": path.to_string_lossy().replace('\\', "/")
-                }),
-                Input::Matched { path, captures } => json!({
-                    "type": "file",
-                    "path": path.to_string_lossy().replace('\\', "/"),
-                    "captures": (*captures).clone()
-                }),
+                Input::File(path) => {
+                    let mut entry = json!({
+                        "type": "file",
+                        "path": path.to_string_lossy().replace('\\', "/")
+                    });
+                    add_format_hint(&mut entry, cli, &path);
+                    entry
+                }
+                Input::Matched { path, captures } => {
+                    let mut entry = json!({
+                        "type": "file",
+                        "path": path.to_string_lossy().replace('\\', "/"),
+                        "captures": (*captures).clone()
+                    });
+                    add_format_hint(&mut entry, cli, &path);
+                    entry
+                }
             };
             if let Err(error) = writeln!(stdout, "{entry}") {
                 return reporter.error(&AppError::Io(error));
             }
         }
         return 0;
+    }
+
+    /// Extension-only, content-free format hint for a `--list` inventory entry.
+    /// `--list` never opens files, so this is a *hint* (extension-derived) and
+    /// is only present when the format is deterministic from `-f` or the
+    /// extension; unknown/extension-less files omit the field rather than guess.
+    fn add_format_hint(entry: &mut JsonValue, cli: &Cli, path: &std::path::Path) {
+        let format = if cli.format != InputFormat::Auto {
+            Some(cli.format)
+        } else {
+            crate::source::detect_format_by_extension(Some(path))
+        };
+        if let Some(format) = format {
+            if let Some(object) = entry.as_object_mut() {
+                object.insert(
+                    "format".to_owned(),
+                    JsonValue::String(format.as_str().to_owned()),
+                );
+            }
+        }
     }
 
     let pipeline_source = match cli.pipeline.as_deref() {
@@ -151,6 +179,7 @@ fn run_inner(
     );
     let mut session = pipeline.session();
     let mut had_errors = false;
+    let mut opened_files = 0_u64;
 
     for input in inputs {
         let captures: Option<Arc<JsonValue>> = match &input {
@@ -174,6 +203,9 @@ fn run_inner(
                 }
             },
         };
+        if path.is_some() {
+            opened_files += 1;
+        }
 
         let mut source = match InputSource::open(reader, path, captures, cli, reporter) {
             Ok(Opened::Ready(source)) => source,
@@ -260,6 +292,16 @@ fn run_inner(
             return 0;
         }
         return reporter.error(&error);
+    }
+    // Observable zero-match: an Agent relying on exit codes alone cannot tell a
+    // genuine zero match from a silently skipped / empty input set. When at
+    // least one file was actually opened and the run produced zero results with
+    // no error, warn (suppressible with --quiet). stdout stays data-only.
+    if !had_errors && opened_files > 0 && output.emitted() == 0 {
+        reporter.warn(&format!(
+            "processed {opened_files} file{}, 0 results",
+            if opened_files == 1 { "" } else { "s" }
+        ));
     }
     u8::from(had_errors)
 }

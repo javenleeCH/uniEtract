@@ -60,6 +60,7 @@ ux --quiet --error-format json -f jsonl -e 'jq(select(.level == "ERROR"))' .\log
 | `attr(NAME)` | 元素或属性 Node | 属性值 Text（缺失则 0 条） |
 | `split(PATTERN)` | Text | 按正则切分的 Text 片段，空片段丢弃、不 trim |
 | `slurp()` | 任意 | 所有输入收敛为一个 Data 数组；至多一个，跨文件全局 |
+| `captures()` | 任意 | `--path-spec` captures 对象（显式 opt-in；无 path-spec 时为 null）→ Data |
 
 参数字符串支持 `r"..."` / `r#"..."#` 原始字符串（任意井号数）与 `\n \r \t \\ \' \"` 六种转义。管道符只在括号深度为 0 且不在字符串内时切分，所以 jq 自身的 `.a | .b` 不会被误拆。没有「字面 `|`」转义。
 
@@ -71,7 +72,7 @@ DSL 结构由 `pest` 的 PEG 语法（`src/dsl.pest`）描述，`src/dsl.rs` 负
 
 - 格式：JSON、JSONL/NDJSON、YAML（多文档）、TOML、XML、HTML、text/log、CSV/TSV。`-f auto` 先按扩展名，未知扩展名只保守嗅探 JSON 与 HTML/XML，其余按文本；YAML/TOML/CSV/JSONL 请显式指定 `-f`。
 - 编码：`--encoding utf-8|utf-16le|utf-16be|gbk|gb18030|auto`。BOM 会被剥离；`auto` 回退 GB18030 时会在 stderr 说明。UTF-16 不会被误判为二进制。转码前的原始字节也受 `--max-input-size` 约束，解码后不再二次套用同一上限。
-- 路径：文件、目录（递归）、glob、`-`（stdin）。目录默认忽略 `.git`/`target`/`node_modules` 等；`--exclude GLOB`、`--no-default-ignore`、`--max-depth` 控制范围；`--fuzzy QUERY` 是后置过滤，不做目录剪枝。`--list`（别名 `--dry-run`）只输出待处理清单而不读文件；`--no-stdin` 显式拒绝 stdin。输出顺序按相对路径字典序，处理永远串行。
+- 路径：文件、目录（递归）、glob、`-`（stdin）。目录默认忽略 `.git`/`target`/`node_modules` 等；`--exclude GLOB`、`--no-default-ignore`、`--max-depth` 控制范围；`--fuzzy QUERY` 是后置过滤，不做目录剪枝。`--list`（别名 `--dry-run`）只输出待处理清单而不读文件；`--no-stdin` 显式拒绝 stdin。输出顺序按相对路径字典序，处理永远串行。`--list` 清单每行带 `type` / `path`（及 `--path-spec` 的 `captures`），并追加 `format`（仅当格式可从 `-f` 或扩展名确定；内容无关提示，未知扩展名省略该字段）。
 - 输出：`-O jsonl`（默认，每行紧凑 JSON）、`-O text`（原样文本）、`-O json`（聚合成数组，默认缩进 2 空格，`--compact` 关闭）。换行恒为 LF。
 - `--with-source` 包成 `{value, source:{path,line,record}}`；与 `-O text` 互斥。`source.path` 与 `--list` 的 `path` 一致使用 `/` 分隔符（Windows 上也如此），两份输出可直接对账。
 - 体积：`--max-input-size`（整文档格式）、`--max-record-size`（单行/单记录/切分片段）。`0` 表示不限。
@@ -88,7 +89,7 @@ DSL 结构由 `pest` 的 PEG 语法（`src/dsl.pest`）描述，`src/dsl.rs` 负
 | `{name:glob:*.txt}` | `*` / `?` 段内通配（不跨 `/`），产生命名捕获 `name` |
 
 - 0.3.1 起**不接受** `time:` / `lit:` / 简写 `{%Y-%m-%d}` / `{\d+}`，也**不做日历或时钟合法性校验**；有效性由调用方写进 `re:` 片段。非法 spec 在打开任何目录之前返回 `Usage(2)`。
-- 命名 captures 是**只读字符串元数据**：出现在 `--list` 与 `--with-source` 的 `source.captures` 里，**不参与流水线求值**（DSL 无法引用），也不生成 `ts_fields` 之类派生字段。
+- 命名 captures 是**只读字符串元数据**：出现在 `--list` 与 `--with-source` 的 `source.captures` 里，默认**不参与流水线求值**，也不生成 `ts_fields` 之类派生字段。0.4.0 起可用 `captures()` 阶段显式把它们注入记录流（opt-in）。
 - 目录结尾的 spec 不会隐式追加 `**`；必须显式写出文件段，例如 `/{file:glob:*.txt}`。
 - 与位置参数 `PATH|GLOB` 互斥；可与 `--exclude`、`--fuzzy`（后置过滤）、`--no-default-ignore` 组合。段级剪枝：不匹配的中间目录根本不会被进入。
 - 发现阶段三类异常（`read_dir` 打开失败、`ReadDir` 单条目失败、`file_type` 失败）会输出 warning 而不是静默跳过；`--quiet` 可压制，因此**需要区分零匹配与「丢文件」时不要加 `--quiet`**。
@@ -97,11 +98,24 @@ DSL 结构由 `pest` 的 PEG 语法（`src/dsl.pest`）描述，`src/dsl.rs` 负
 - `re:` 片段里可以写嵌套命名组拆文件名字段：`{file:re:.*(?<ts>\d{8}_\d{6})_(?<seq>\d+)_hidumper\.txt}` 会产出 `file` / `ts` / `seq` 三个捕获；片段内的冒号（如 `\d{2}:\d{2}`）合法。
 - 转义只支持 `\{` / `\}` / `\\` 三种；其他 `\X` 保留为字面两字符。
 
+### 输入选择：选型决策表
+
+四种文件选择方式并行存在，按需求取一种：
+
+| 入口 | 适用场景 | 剪枝 | 命名捕获 | 备注 |
+|---|---|---|---|---|
+| 位置参数 `PATH` / 目录 / `GLOB` | 名称通配、递归整目录 | 目录递归时默认忽略表 | 无 | 最通用；`--fuzzy`/`--exclude` 做后置过滤 |
+| `--path-spec` | 路径**结构**带语义（时间戳目录/服务名离散），要段级剪枝 | 段级（不匹配目录不进入） | 有（`re:`/`glob:`） | 与位置参数互斥；目录尾不追加 `**` |
+| `--path-regex REGEX` | 需要**跨段/全路径**正则过滤，不要结构化捕获 | 无（后置过滤） | 无 | 可重复，全匹配 AND；与 `--exclude`/`--fuzzy` 组合 |
+| `--root DIR` + 相对位置参数 | 把发现/报告锚定到非当前目录 | 随位置参数语义 | 无 | 绝对位置参数不受锚定影响 |
+
+`--path-spec` 优先于 `--path-regex`：做结构化段匹配时用前者（有剪枝与 captures）；做轻量正则后置过滤时用后者。
+
 ```powershell
 ux --path-spec 'data/{ts:re:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}}_SRRG/render_service/{mins:re:\d+}min/hidumper/txt/{file:glob:*.txt}' --list
 ```
 
-退出码：`0` 成功（含零匹配）、`1` 输入/解析/求值/输出错误、`2` 参数或编译错误。判定按**错误变体**而非 I/O 方向：`AppError::Io(BrokenPipe)` 一律视为正常终止并退出 0（不写诊断）；被 `Runtime(String)` 包裹的读错误仍是 `runtime(1)`。0.3.1 **未改变**这一 0.3.0 既有判定：输入侧首次 `fill_buf` 与逐行 `read_until` 产生的 BrokenPipe 同样返回 0，按输入/输出侧区分不属于本轮契约。详细字段见下节。
+退出码：`0` 成功（含零匹配）、`1` 输入/解析/求值/输出错误、`2` 参数或编译错误。判定按 **I/O 方向**而非错误变体：**输出侧** `AppError::Io(BrokenPipe)`（例如 `| head` 提前关闭）视为正常终止并退出 0（不写诊断）；**输入侧**读失败——含上游管道破裂——一律 `runtime(1)` 并输出诊断。0.4.0 起输入侧不再被静默判成功。详细字段见下节。
 
 ## 面向开发者与 Agent 的稳定契约
 
@@ -115,11 +129,11 @@ CLI 会被脚本、CI 与 LLM 生成的命令直接调用。下列行为是**跨
 | 顺序 | 文件按归一化相对路径字典序串行处理；`--list` 顺序与实际处理顺序一致，多次调用字节级稳定 |
 | 输入 | 无路径默认读 stdin；stdin 是终端且未显式给 `-` 时返回 `Usage(2)` 并提示，避免自动化进程挂起；`--no-stdin` 可彻底禁用 |
 
-以下条目是**当前版本行为，0.4.0 会变更**，不纳入长期稳定契约：
+以下条目是**当前版本行为（0.4.0 已定型）**：
 
-| 关注点 | 当前行为（0.3.x） | 0.4.0 |
-|---|---|---|
-| BrokenPipe | `AppError::Io(BrokenPipe)` 一律为 0，含输入侧裸 IO 错误，且不写诊断 | 输入侧改为 `runtime(1)` 并输出诊断；见「0.4.0 时间表」与「已知限制」中「退出码 0 不证明输入被完整读取」 |
+| 关注点 | 行为 |
+|---|---|
+| BrokenPipe | 按 I/O 方向区分：输出侧 `AppError::Io(BrokenPipe)` 为 0 且不写诊断（正常终止）；输入侧读失败为 `runtime(1)` 并输出诊断 |
 
 结构化诊断示例（stderr，每行一个对象）：
 
@@ -148,13 +162,14 @@ ux --quiet --error-format json -f jsonl -e 'jq(select(.level == "ERROR"))' .\log
 
 | stderr | 含义 | 建议动作 |
 |---|---|---|
-| 空 | 真的零匹配；**或**输入侧管道破裂被按 `AppError::Io(BrokenPipe)` 静默判为成功 | 复核表达式与输入格式（显式 `-f jsonl`、HTML 隐式 `<tbody>` 等）；若输入来自管道，改用文件输入重跑以排除上游提前关闭 |
+| 空 | 真的零匹配 | 复核表达式与输入格式（显式 `-f jsonl`、HTML 隐式 `<tbody>` 等） |
 | `no input files matched` | glob / 过滤没命中 | 用 `ux --list` 复核输入集 |
 | `binary input skipped` / `incompatible` | 文件被跳过 | 按需加 `--force-text` 或调整首阶段 |
-| `empty file (no records)` | 文件被打开但零字节，不产生任何记录（0.4.0 起警告；空 stdin 不警告） | 与 `--list` 清单对账时把该文件记为「空」而非「缺失」 |
+| `empty file (no records)` | 文件被打开但零字节，不产生任何记录（空 stdin 不警告） | 与 `--list` 清单对账时把该文件记为「空」而非「缺失」 |
 | `assumed GB18030` | 编码回退 | 显式 `--encoding` 更稳 |
+| `processed N file(s), 0 results` | 打开了 ≥1 个文件（无错误）但产物 0 条 | 与「真零匹配」区分：复核表达式 / `-f`；这本身就是零匹配的信号 |
 
-`--quiet` 会隐藏这些 warning：只关心数据且依赖退出码时可加（**管道输入除外**，见下）；需要区分「零匹配」与「文件被跳过」时不要加。**`rc=0` + stdout 空 + stderr 空不能证明输入被完整读取**：输入侧 BrokenPipe 也是这个组合，详见「已知限制」的「退出码 0 不证明输入被完整读取」；管道输入场景应改用文件输入，不要靠 `--quiet` + 退出码判断完整性。
+`--quiet` 会隐藏这些 warning：只关心数据且依赖退出码时可加；需要区分「零匹配」与「文件被跳过」时不要加。输入侧管道破裂现在已是 `runtime(1)` 诊断（见「稳定契约」表），不再以「空 stderr + 空 stdout」的形态出现。
 
 容易误判的点：
 
@@ -232,7 +247,6 @@ git push github v0.3.1                            # 触发 Release workflow
 - Windows Git Bash / MSYS2 会把 `-e` 里的 `//a`、`//b:book` 当 UNC 路径改写，导致 XPath 静默零匹配。执行前设 `MSYS2_ARG_CONV_EXCL='*'`，或改用 PowerShell。这是 shell 的参数转换，不是 `ux` 的解析问题。
 - DSL 括号嵌套最多 128 层，超限时报错退出 2（不崩溃、不静默截断）；限制只针对嵌套深度，不影响长正则或长 jq filter。
 - `--path-spec` 只做段级结构匹配：不做跨段通配、不做基于 captures 的排序，也不提供 `--sort` / `--max-files` 或提取提示（hint）。`re:` 片段内嵌套命名组拆文件名字段自 0.4.0 起可用（见上文）。manpage 未随发行提供，可用 `--help` 与 `--completions` 替代。
-- **退出码 0 不证明输入被完整读取**：0.3.1 按错误变体判定 BrokenPipe，输入侧管道破裂（首次 `fill_buf` / 逐行读）同样返回 0 且 stderr 为空。Agent / 脚本不能只靠 `rc=0` 判断输入已读完；需要强保证时改用文件输入。按输入/输出侧区分已列入 0.4.0 必修项。
 
 完整契约与 ADR 见 `docs/cli-design.md`；路径匹配的段级剪枝与夹具证据见 `docs/path-spec-design.md`；变更记录与版本路线见 `CHANGELOG.md`。
 
@@ -240,17 +254,17 @@ git push github v0.3.1                            # 触发 Release workflow
 
 | 项 | 决定 |
 |---|---|
-| `--path-regex` / `--root` | 做，与 `--path-spec` **并存**，不替换 |
-| captures 求值注入 | 做，显式 opt-in；默认仍只读 |
+| `--path-regex` / `--root` | **已实现（本轮）**，与 `--path-spec` **并存**，不替换；选型决策表见下 |
+| captures 求值注入 | **已实现（本轮）**：新增 `captures()` 阶段，显式 opt-in；默认仍只读 |
 | `slurp()` / `-O json` | **保留，不废弃** |
 | 嵌套命名组进 captures | **已实现（本轮）**：`re:` 片段内的 `(?<sub>...)` 一并产出捕获；跨段同名编译期拒绝。原计划的「子捕获 + basename 阶段」由本项覆盖 |
 | 提取提示（hint） | **不做** |
 | 库接口 | **不承诺稳定库 API、不发布库文档**：`pub` 项（`run` / `parse_pipeline` / `cli`）仅用于内部分层与测试，稳定契约只有 CLI |
-| BrokenPipe 按输入/输出侧区分 | **做（甲方技术复核增列）**：输入侧读错输出 `runtime(1)` 诊断，不再静默返回 0；验收点为输入侧管道破裂时 `rc=1` 且 stderr 有 `runtime` 诊断 |
+| BrokenPipe 按输入/输出侧区分 | **已实现（本轮）**：输入侧读错输出 `runtime(1)` 诊断，不再静默返回 0；输出侧 `BrokenPipe` 退出 0 且不写诊断 |
 
 ## Agent Skill
 
-随仓库提供 `ux-extract` skill（`.agents/skills/ux-extract/`），教 Agent 用 `ux` 做本地信息抽取：预检、`--list` 先定输入集、七阶段流水线组装、结构化诊断与退出码解读。`.agents/skills/` 是 [Agent Skills 开放规范](https://agentskills.io)约定的**跨客户端通用目录**：遵循规范的 Agent（Claude Code、Codex、Amp、CodeBuddy 等）都会扫描 `~/.agents/skills/`（用户级）与 `<project>/.agents/skills/`（项目级）。
+随仓库提供 `ux-extract` skill（`.agents/skills/ux-extract/`），教 Agent 用 `ux` 做本地信息抽取：预检、`--list` 先定输入集、八阶段流水线组装、结构化诊断与退出码解读。`.agents/skills/` 是 [Agent Skills 开放规范](https://agentskills.io)约定的**跨客户端通用目录**：遵循规范的 Agent（Claude Code、Codex、Amp、CodeBuddy 等）都会扫描 `~/.agents/skills/`（用户级）与 `<project>/.agents/skills/`（项目级）。
 
 ### 下载
 

@@ -19,7 +19,7 @@ ux [FLAGS] -e 'stage(...) | stage(...)' [PATH|GLOB|- ...]
 | `--encoding` | `utf-8\|utf-16le\|utf-16be\|gbk\|gb18030\|auto` |
 | `--ns PREFIX=URI` | XPath 前缀绑定，可重复；URI 与文档命名空间 URI 匹配 |
 | `--path-spec SPEC` | 结构化路径匹配，与位置参数互斥 |
-| `--list`, `--dry-run` | 只输出输入集 JSONL，不读文件内容 |
+| `--list`, `--dry-run` | 只输出输入集 JSONL，不读文件内容；每行带 `type`/`path`（及 path-spec 的 `captures`），并追加 `format`（仅当格式可由 `-f` 或扩展名确定；内容无关提示） |
 | `--completions SHELL` | bash / zsh / fish / powershell / elvish |
 | `--error-format` | `text`（默认）\| `json` |
 | `--quiet`, `--silent` | 只压 warning，错误照常输出 |
@@ -49,6 +49,7 @@ ux [FLAGS] -e 'stage(...) | stage(...)' [PATH|GLOB|- ...]
 | `attr(NAME)` | 元素或属性 Node | 属性值 Text，缺失则 0 条 |
 | `split(PATTERN)` | Text | 按正则切分的 Text 片段，空片段丢弃、不 trim |
 | `slurp()` | 任意 | 全部输入收敛为一个 Data 数组，至多一个，跨文件全局 |
+| `captures()` | 任意 | `--path-spec` captures 对象（显式 opt-in；无 path-spec 时为 null）→ Data |
 
 编译期做类型上界检查（`slurp() | xpath(...)` 这类组合在读取输入前报错退出 2）；运行期仍有值级类型检查。
 
@@ -87,17 +88,18 @@ ux [FLAGS] -e 'stage(...) | stage(...)' [PATH|GLOB|- ...]
 
 跨版本稳定：stdout 只承载数据；stderr 每条诊断一行；`--quiet` 只压 warning；错误必出；0/1/2 退出码；字典序串行；`--no-stdin` 与 TTY 保护；`catch_unwind` 无条件把主线程 unwind panic 收敛为 `runtime(1)`，JSON 模式额外安装空 panic hook 保证 stderr 纯净。
 
-0.3.x 当前行为（0.4.0 会变更）：`AppError::Io(BrokenPipe)` 一律退出 0 且不写诊断，`Runtime(String)` 包裹的读错误为 `runtime(1)`。**输入侧**首次 `fill_buf` 与逐行 `read_until` 产生的 BrokenPipe 同样返回 0，因此 `rc=0` + stdout 空 + stderr 空**不能证明输入被完整读取**；需要强保证时改用文件输入。
+0.4.0 行为：BrokenPipe 按 **I/O 方向**区分——**输出侧** `AppError::Io(BrokenPipe)` 退出 0 且不写诊断（正常终止）；**输入侧**读失败（含上游管道破裂）为 `runtime(1)` 诊断。`rc=0` 且 stdout 空且 stderr 空现在**只表示「真的零匹配」**，不再可能是「输入侧管道破裂被静默判成功」。
 
 ## `rc=0` 且 stdout 为空的决策表
 
 | stderr | 含义 | 动作 |
 |---|---|---|
-| 空 | 真的零匹配，或输入侧管道破裂被静默判为成功 | 复核表达式与 `-f`；若输入来自管道，改用文件输入重跑 |
+| 空 | 真的零匹配 | 复核表达式与 `-f` |
 | `no input files matched` | glob / 过滤没命中 | `ux --list` 复核输入集 |
 | `binary input skipped` / `incompatible` | 文件被跳过 | 加 `--force-text` 或调整首阶段 |
-| `empty file (no records)` | 0 字节文件已打开但不产生记录（0.4.0 起；空 stdin 不警告） | 对账时记为「空」而非「缺失」 |
+| `empty file (no records)` | 0 字节文件已打开但不产生记录（空 stdin 不警告） | 对账时记为「空」而非「缺失」 |
 | `assumed GB18030` | 编码回退 | 显式 `--encoding` |
+| `processed N file(s), 0 results` | 打开 ≥1 个文件但产物 0 条（无错误） | 这是零匹配的可见信号；复核表达式 / `-f` |
 
 `--quiet` 会隐藏这些 warning。需要区分「零匹配」与「文件被跳过」时不要加；管道输入场景不要依赖 `--quiet` + 退出码判断完整性。
 

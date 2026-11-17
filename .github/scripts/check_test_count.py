@@ -10,7 +10,7 @@ import re
 import subprocess
 import sys
 
-EXPECTED = 167
+EXPECTED = 175
 
 # libtest prints one summary line per test binary, e.g. "26 tests, 0 benchmarks".
 SUMMARY = re.compile(r"(\d+)\s+tests?,\s+\d+\s+benchmarks?")

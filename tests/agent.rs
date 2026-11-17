@@ -227,6 +227,51 @@ fn list_marks_stdin_and_does_not_open_files() {
 }
 
 #[test]
+fn list_appends_an_extension_derived_format_hint() {
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join("a.json"), "not json").unwrap();
+    fs::write(dir.path().join("b.csv"), "not csv").unwrap();
+    fs::write(dir.path().join("extensionless"), "not jsonl").unwrap();
+
+    let output = ux()
+        .args(["--list", dir.path().to_str().unwrap()])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let entries = json_lines(&output.stdout);
+    assert_eq!(entries.len(), 3);
+    // Extension-derived hints (content-free: --list never opens files).
+    let a = entries
+        .iter()
+        .find(|e| e["path"].as_str().unwrap().ends_with("a.json"))
+        .unwrap();
+    assert_eq!(a["format"], "json");
+    let b = entries
+        .iter()
+        .find(|e| e["path"].as_str().unwrap().ends_with("b.csv"))
+        .unwrap();
+    assert_eq!(b["format"], "csv");
+    // Unknown extension: field is omitted rather than guessed.
+    let c = entries
+        .iter()
+        .find(|e| e["path"].as_str().unwrap().ends_with("extensionless"))
+        .unwrap();
+    assert!(c.get("format").is_none(), "{c}");
+
+    // Explicit -f overrides the hint for every entry.
+    let forced = ux()
+        .args(["--list", "-f", "text", dir.path().to_str().unwrap()])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    for entry in json_lines(&forced.stdout) {
+        assert_eq!(entry["format"], "text");
+    }
+}
+
+#[test]
 fn completions_script_is_generated_without_other_arguments() {
     let bash = ux()
         .args(["--completions", "bash"])
@@ -433,6 +478,54 @@ fn zero_matches_is_success_with_clean_stderr() {
         .clone();
     assert!(output.stdout.is_empty());
     assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn file_zero_matches_emits_a_suppressible_summary() {
+    // A genuine zero match over *file* input is the highest-frequency silent
+    // failure for agents; it must be observable on stderr (still exit 0).
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join("a.txt"), "abc\n").unwrap();
+
+    let output = ux()
+        .args([
+            "-f",
+            "text",
+            "-O",
+            "text",
+            "-e",
+            r#"re(r"ZZZ")"#,
+            dir.path().to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    assert!(output.stdout.is_empty());
+    assert!(
+        text(&output.stderr).contains("0 results"),
+        "{:?}",
+        text(&output.stderr)
+    );
+
+    // --quiet suppresses the summary (still exit 0, still data-only stdout).
+    let quiet = ux()
+        .args([
+            "-f",
+            "text",
+            "-O",
+            "text",
+            "--quiet",
+            "-e",
+            r#"re(r"ZZZ")"#,
+            dir.path().to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    assert!(quiet.stdout.is_empty());
+    assert!(quiet.stderr.is_empty(), "{:?}", text(&quiet.stderr));
 }
 
 #[test]

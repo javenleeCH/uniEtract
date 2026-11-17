@@ -51,11 +51,12 @@ BANNED_DOCS = (
     "verify.py",
     "{ts:time:",
     "{n:lit:",
-    # Rejected wording from earlier rounds; keep these so the direction-based
-    # BrokenPipe promise and the blanket panic promise cannot creep back in.
-    "输出侧 BrokenPipe 为 0，输入侧读失败为 1",
-    "输入侧读失败仍为",
-    "仅输出侧",
+    # Rejected wording: 0.4.0 fixes BrokenPipe by I/O direction, so the old
+    # variant-based wording must not come back (and the blanket panic promise
+    # must stay out).
+    "AppError::Io(BrokenPipe) 一律",
+    "同样返回 0",
+    "不证明输入被完整读取",
     "检测必须覆盖",
     "任何意外 panic 转为",
     # Design docs describe the finalized implementation; open-issue and

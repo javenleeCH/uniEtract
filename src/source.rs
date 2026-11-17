@@ -44,7 +44,14 @@ impl<'reader> InputSource<'reader> {
             .map(|path| path.display().to_string())
             .unwrap_or_else(|| "<stdin>".to_owned());
         // fill_buf never waits for a full buffer, so interactive stdin stays streamable.
-        let prefix = reader.fill_buf()?.to_vec();
+        // An input-side read failure (including a broken pipe from a closed upstream)
+        // is a real error with `runtime(1)`; only *output*-side BrokenPipe is a normal
+        // termination. Wrapping here (instead of the bare `?`) keeps reads distinct
+        // from the `AppError::Io` that output writes surface.
+        let prefix = reader
+            .fill_buf()
+            .map_err(|error| AppError::Runtime(format!("`{label}`: cannot read input: {error}")))?
+            .to_vec();
         // An empty regular file yields zero records without any diagnostic,
         // which hides it from inventory reconciliation (a skipped file and a
         // zero-match file are indistinguishable). Empty stdin stays silent:
@@ -271,27 +278,31 @@ fn looks_binary(prefix: &[u8], encoding: ResolvedEncoding) -> bool {
     non_printable * 100 > sample.len() * 30
 }
 
-pub(crate) fn detect_format(path: Option<&Path>, prefix: &[u8]) -> InputFormat {
-    if let Some(extension) = path
+/// Extension-only, content-free format hint. `--list` never opens files, so it
+/// uses this narrower probe (content sniffing is a run-time concern only).
+/// `None` means "unknown/needs content sniffing at run time".
+pub(crate) fn detect_format_by_extension(path: Option<&Path>) -> Option<InputFormat> {
+    let extension = path
         .and_then(Path::extension)
         .and_then(|extension| extension.to_str())
-        .map(str::to_ascii_lowercase)
-    {
-        let known = match extension.as_str() {
-            "json" => Some(InputFormat::Json),
-            "jsonl" | "ndjson" => Some(InputFormat::Jsonl),
-            "yaml" | "yml" => Some(InputFormat::Yaml),
-            "toml" => Some(InputFormat::Toml),
-            "xml" => Some(InputFormat::Xml),
-            "html" | "htm" => Some(InputFormat::Html),
-            "txt" | "log" => Some(InputFormat::Text),
-            "csv" => Some(InputFormat::Csv),
-            "tsv" | "tab" => Some(InputFormat::Tsv),
-            _ => None,
-        };
-        if let Some(known) = known {
-            return known;
-        }
+        .map(str::to_ascii_lowercase)?;
+    match extension.as_str() {
+        "json" => Some(InputFormat::Json),
+        "jsonl" | "ndjson" => Some(InputFormat::Jsonl),
+        "yaml" | "yml" => Some(InputFormat::Yaml),
+        "toml" => Some(InputFormat::Toml),
+        "xml" => Some(InputFormat::Xml),
+        "html" | "htm" => Some(InputFormat::Html),
+        "txt" | "log" => Some(InputFormat::Text),
+        "csv" => Some(InputFormat::Csv),
+        "tsv" | "tab" => Some(InputFormat::Tsv),
+        _ => None,
+    }
+}
+
+pub(crate) fn detect_format(path: Option<&Path>, prefix: &[u8]) -> InputFormat {
+    if let Some(known) = detect_format_by_extension(path) {
+        return known;
     }
 
     let start = prefix

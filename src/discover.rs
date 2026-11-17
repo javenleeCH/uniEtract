@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use glob::Pattern as GlobPattern;
 use nucleo_matcher::{Config, Matcher, Utf32Str};
+use regex::Regex;
 use serde_json::Value as JsonValue;
 use walkdir::{DirEntry, WalkDir};
 
@@ -53,6 +54,16 @@ pub fn discover(cli: &Cli, reporter: &mut Reporter<'_>) -> Result<Vec<Input>, Ap
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| AppError::Usage(format!("invalid --exclude glob: {error}")))?;
 
+    let path_regex = cli
+        .path_regex
+        .iter()
+        .map(|pattern| {
+            Regex::new(pattern).map_err(|error| {
+                AppError::Query(format!("invalid --path-regex `{pattern}`: {error}"))
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     let mut matcher = cli
         .fuzzy
         .as_ref()
@@ -68,7 +79,14 @@ pub fn discover(cli: &Cli, reporter: &mut Reporter<'_>) -> Result<Vec<Input>, Ap
             any_matched = true;
             continue;
         }
-        let candidates = expand(spec, cli, &excludes, reporter)?;
+        // --root re-anchors relative paths; absolute paths are untouched.
+        let spec = match &cli.root {
+            Some(root) if Path::new(spec).is_relative() => {
+                Path::new(root).join(spec).to_string_lossy().into_owned()
+            }
+            _ => spec.clone(),
+        };
+        let candidates = expand(&spec, cli, &excludes, reporter)?;
         if candidates.is_empty() {
             continue;
         }
@@ -79,6 +97,11 @@ pub fn discover(cli: &Cli, reporter: &mut Reporter<'_>) -> Result<Vec<Input>, Ap
                 if !fuzzy_hit(matcher, &relative, query) {
                     continue;
                 }
+            }
+            // --path-regex is a post-filter over the normalized relative path;
+            // every pattern must match (AND), unlike --exclude (OR of excluded).
+            if !path_regex.is_empty() && !path_regex.iter().all(|re| re.is_match(&relative)) {
+                continue;
             }
             let key = path.canonicalize().unwrap_or_else(|_| path.clone());
             if seen.insert(key) {

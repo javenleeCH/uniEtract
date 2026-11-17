@@ -16,6 +16,7 @@ pub enum StageSpec {
     Attr(String),
     Slurp,
     Split(String),
+    Captures,
 }
 
 /// Parse a whole pipeline. `dsl.pest` owns the structural scan (top-level
@@ -136,6 +137,8 @@ fn build_stage(name: &str, argument: &str) -> Result<StageSpec, AppError> {
         "slurp" => Err(AppError::Query("slurp() takes no arguments".to_owned())),
         "attr" => Ok(StageSpec::Attr(parse_string_argument(inner, "attr")?)),
         "split" => Ok(StageSpec::Split(parse_string_argument(inner, "split")?)),
+        "captures" if inner.is_empty() => Ok(StageSpec::Captures),
+        "captures" => Err(AppError::Query("captures() takes no arguments".to_owned())),
         _ => Err(AppError::Query(format!("unknown stage `{name}`"))),
     }
 }

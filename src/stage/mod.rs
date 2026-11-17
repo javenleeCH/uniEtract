@@ -57,6 +57,7 @@ pub enum CompiledStage {
     Attr(String),
     Slurp,
     Split(SplitStage),
+    Captures,
 }
 
 impl CompiledStage {
@@ -73,6 +74,7 @@ impl CompiledStage {
             StageSpec::Attr(name) => Ok(Self::Attr(name)),
             StageSpec::Slurp => Ok(Self::Slurp),
             StageSpec::Split(source) => Ok(Self::Split(SplitStage::compile(&source, limits)?)),
+            StageSpec::Captures => Ok(Self::Captures),
         }
     }
 
@@ -86,7 +88,7 @@ impl CompiledStage {
             Self::Jq(_) => TypeSet::DATA.union(TypeSet::TEXT),
             Self::XPath(_) | Self::Attr(_) => TypeSet::NODE,
             Self::Regex(_) | Self::Split(_) => TypeSet::TEXT,
-            Self::Text | Self::Slurp => TypeSet::ALL,
+            Self::Text | Self::Slurp | Self::Captures => TypeSet::ALL,
         }
     }
 
@@ -96,7 +98,7 @@ impl CompiledStage {
             Self::Jq(_) | Self::Regex(_) => TypeSet::DATA.union(TypeSet::TEXT),
             Self::XPath(_) => TypeSet::ALL,
             Self::Text | Self::Attr(_) | Self::Split(_) => TypeSet::TEXT,
-            Self::Slurp => TypeSet::DATA,
+            Self::Slurp | Self::Captures => TypeSet::DATA,
         }
     }
 
@@ -109,10 +111,16 @@ impl CompiledStage {
             Self::Attr(name) => format!("attr({name})"),
             Self::Slurp => "slurp".to_owned(),
             Self::Split(_) => "split".to_owned(),
+            Self::Captures => "captures".to_owned(),
         }
     }
 
-    pub fn evaluate<'doc>(&self, value: Value<'doc>) -> Result<Vec<Value<'doc>>, String> {
+    /// Like `evaluate`, but `captures()` can read the item's path-spec captures.
+    pub fn evaluate_with_origin<'doc>(
+        &self,
+        value: Value<'doc>,
+        origin: Option<&crate::model::Origin>,
+    ) -> Result<Vec<Value<'doc>>, String> {
         match self {
             Self::Jq(stage) => stage.evaluate(value),
             Self::XPath(stage) => stage.evaluate(value),
@@ -135,6 +143,13 @@ impl CompiledStage {
             }
             Self::Slurp => Err("slurp() is a boundary stage and must run in a session".to_owned()),
             Self::Split(stage) => stage.evaluate(value),
+            Self::Captures => {
+                let captures = origin
+                    .and_then(|origin| origin.captures.as_ref())
+                    .map(|captures| (**captures).clone())
+                    .unwrap_or(serde_json::Value::Null);
+                Ok(vec![Value::Data(captures)])
+            }
         }
     }
 }

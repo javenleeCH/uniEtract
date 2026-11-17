@@ -1,4 +1,5 @@
 use clap::{Parser, ValueEnum};
+use std::path::Path;
 
 use crate::error::AppError;
 
@@ -10,7 +11,7 @@ use crate::error::AppError;
     about = "Compose jq, XPath and regex extraction stages",
     long_about = "Compose jq, XPath and regex extraction stages into one record stream.\n\nReads files, directories, globs or stdin and emits JSONL by default. Diagnostics go to stderr with stable exit codes; stdout carries data only.",
     after_help = "Examples:\n  ux -e 'jq(.items[].msg)' data.json\n  ux -f jsonl -O text -e 'slurp() | jq(length)' a.jsonl\n  ux --list .\n\nRun `ux --help` for the stage reference and agent contract.",
-    after_long_help = "STAGES\n  jq(FILTER)      JSON filter (jaq); JSON strings fall back to text\n  xpath(EXPR)     XPath 1.0 over XML/HTML nodes\n  re(PATTERN)     Rust regex; captures become objects with 0/1/named keys\n  text()          string-value of any item\n  attr(NAME)      attribute value of an element or attribute node\n  split(PATTERN)  split text into fragments\n  slurp()         aggregate ALL inputs into one array (memory proportional to records)\n\nINPUT / OUTPUT\n  Formats  auto|json|jsonl|yaml|toml|xml|html|text|csv|tsv\n  Output   -O jsonl (default) | text | json ; --with-source adds provenance\n  -f auto uses the extension; specify -f for JSONL/YAML/TOML/CSV without one.\n  -O json and slurp() buffer everything before writing the first byte.\n\nAGENT CONTRACT\n  stdout   data only; --list writes a JSONL inventory of the inputs instead\n  stderr   one diagnostic per line; --error-format json emits {code,message,exit_code}\n  --quiet  suppresses warnings, never errors\n  codes    0 success (including zero matches), 1 runtime, 2 usage/compile\n  stdin    no paths reads stdin; an interactive stdin is rejected unless - is given\n  --completions bash|zsh|fish|powershell|elvish prints a completion script\n\nPATH SPEC\n  Segments are /-separated; placeholders must be {name:re:...} or {name:glob:...}.\n  Since 0.3.1, time:/lit:/shorthand forms, unknown kinds and calendar\n  validation are gone: they fail with Usage(2) before any directory is opened.\n  Express validity in the re: fragment. Captures are read-only string metadata\n  in --list and --with-source; they never feed the pipeline.\n  A directory-ending spec does not append **; spell out the file segment.\n  Anchored at the current directory; conflicts with positional paths.\n  glob rejects [...] character classes; re: rejects top-level | and unbalanced\n  parentheses. --max-depth is ignored here (segment count defines depth).\n\nROADMAP\n  0.4.0 adds --path-regex/--root alongside --path-spec and an opt-in capture\n  injection. slurp() and -O json stay. Extraction hints are not planned.\n  The library surface stays internal: no stable public API is promised.\n  Input-side BrokenPipe becomes runtime(1) with a diagnostic in 0.4.0.\n\nEXAMPLES\n  ux -e 'jq(.items[].msg)' data.json\n  ux -f html -e 'xpath(\"//a\") | attr(\"href\")' page.html\n  ux -f jsonl -O text -e 'slurp() | jq(length)' a.jsonl b.jsonl\n  ux --list .\n  ux --quiet --error-format json -e 'jq(.id)' data.json"
+    after_long_help = "STAGES\n  jq(FILTER)      JSON filter (jaq); JSON strings fall back to text\n  xpath(EXPR)     XPath 1.0 over XML/HTML nodes\n  re(PATTERN)     Rust regex; captures become objects with 0/1/named keys\n  text()          string-value of any item\n  attr(NAME)      attribute value of an element or attribute node\n  split(PATTERN)  split text into fragments\n  slurp()         aggregate ALL inputs into one array (memory proportional to records)\n  captures()      path-spec captures object (opt-in; null without --path-spec)\n\nINPUT / OUTPUT\n  Formats  auto|json|jsonl|yaml|toml|xml|html|text|csv|tsv\n  Output   -O jsonl (default) | text | json ; --with-source adds provenance\n  -f auto uses the extension; specify -f for JSONL/YAML/TOML/CSV without one.\n  -O json and slurp() buffer everything before writing the first byte.\n\nAGENT CONTRACT\n  stdout   data only; --list writes a JSONL inventory of the inputs instead\n  stderr   one diagnostic per line; --error-format json emits {code,message,exit_code}\n  --quiet  suppresses warnings, never errors\n  codes    0 success (including zero matches), 1 runtime, 2 usage/compile\n  stdin    no paths reads stdin; an interactive stdin is rejected unless - is given\n  --completions bash|zsh|fish|powershell|elvish prints a completion script\n\nPATH SPEC\n  Segments are /-separated; placeholders must be {name:re:...} or {name:glob:...}.\n  Since 0.3.1, time:/lit:/shorthand forms, unknown kinds and calendar\n  validation are gone: they fail with Usage(2) before any directory is opened.\n  Express validity in the re: fragment. Captures are read-only string metadata\n  in --list and --with-source; they never feed the pipeline unless you call\n  captures() to inject them explicitly (0.4.0 opt-in).\n  A directory-ending spec does not append **; spell out the file segment.\n  Anchored at the current directory; conflicts with positional paths.\n  glob rejects [...] character classes; re: rejects top-level | and unbalanced\n  parentheses. --max-depth is ignored here (segment count defines depth).\n\nROADMAP\n  0.4.0 adds --path-regex/--root alongside --path-spec and an opt-in capture\n  injection (captures()). slurp() and -O json stay. Extraction hints are not\n  planned. The library surface stays internal: no stable public API is promised.\n  Input-side BrokenPipe is a runtime(1) error with a diagnostic; only the\n  output side (e.g. `| head`) exits 0 as a normal termination.\n\nEXAMPLES\n  ux -e 'jq(.items[].msg)' data.json\n  ux -f html -e 'xpath(\"//a\") | attr(\"href\")' page.html\n  ux -f jsonl -O text -e 'slurp() | jq(length)' a.jsonl b.jsonl\n  ux --list .\n  ux --error-format json -e 'jq(.id)' data.json"
 )]
 pub struct Cli {
     /// Extraction pipeline, for example: jq(.items[]) | re(r"id=(\d+)")
@@ -47,6 +48,18 @@ pub struct Cli {
     /// 'data/{ts:re:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}}_SRRG/{f:glob:*.txt}'
     #[arg(long = "path-spec", value_name = "SPEC", conflicts_with = "paths")]
     pub path_spec: Option<String>,
+
+    /// Post-filter discovered files by a regex over the normalized relative path
+    /// (repeatable, all patterns must match). Unlike --path-spec this does not
+    /// prune directories during traversal; combine with --fuzzy for rankingless
+    /// path selection.
+    #[arg(long = "path-regex", value_name = "REGEX")]
+    pub path_regex: Vec<String>,
+
+    /// Anchor for relative-path discovery and reporting. Defaults to the current
+    /// directory. Relative paths in --list/--with-source are resolved against it.
+    #[arg(long = "root", value_name = "DIR")]
+    pub root: Option<String>,
 
     /// Maximum directory recursion depth (0 = direct children only)
     #[arg(long, value_name = "N")]
@@ -154,6 +167,20 @@ impl Cli {
         if let Some(spec) = &self.path_spec {
             crate::pathspec::compile(spec)?;
         }
+        for pattern in &self.path_regex {
+            regex::Regex::new(pattern).map_err(|error| {
+                AppError::Query(format!("invalid --path-regex `{pattern}`: {error}"))
+            })?;
+        }
+        if let Some(root) = &self.root {
+            let root = Path::new(root);
+            if !root.is_dir() {
+                return Err(AppError::Usage(format!(
+                    "--root `{}` is not a directory",
+                    root.display()
+                )));
+            }
+        }
         if self.list || self.completions.is_some() {
             return Ok(());
         }
@@ -209,6 +236,24 @@ pub enum InputFormat {
     Text,
     Csv,
     Tsv,
+}
+
+impl InputFormat {
+    /// Stable lowercase name used in `--list` inventory and diagnostics.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Json => "json",
+            Self::Jsonl => "jsonl",
+            Self::Yaml => "yaml",
+            Self::Toml => "toml",
+            Self::Xml => "xml",
+            Self::Html => "html",
+            Self::Text => "text",
+            Self::Csv => "csv",
+            Self::Tsv => "tsv",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]

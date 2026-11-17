@@ -190,6 +190,28 @@ fn shorthand_spec_is_a_usage_error() {
 }
 
 #[test]
+fn captures_stage_injects_read_only_captures_on_demand() {
+    let dir = tempdir().unwrap();
+    scenario(dir.path());
+    // captures() is the opt-in path from path-spec metadata into the pipeline.
+    ux().current_dir(dir.path())
+        .args([
+            "--path-spec",
+            SPEC,
+            "-f",
+            "text",
+            "-O",
+            "text",
+            "-e",
+            r#"jq(select(. != null)) | captures() | jq(.ts)"#,
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2026-11-14T19-45-49"))
+        .stdout(predicate::str::contains("2026-11-15T08-12-03"));
+}
+
+#[test]
 fn calendar_and_clock_validity_are_delegated_to_the_regex() {
     let dir = tempdir().unwrap();
     write(

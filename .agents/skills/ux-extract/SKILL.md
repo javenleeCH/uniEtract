@@ -1,6 +1,6 @@
 ---
 name: ux-extract
-description: This skill should be used when an agent needs to extract structured data from local files, directories, logs, JSON/JSONL/YAML/TOML/XML/HTML/CSV/TSV or stdin using the ux (UniExtract) CLI, or when a task would otherwise be solved with ad-hoc jq, grep, regex or Python parsing scripts. Covers composing the 7-stage pipeline, previewing inputs with --list, selecting files with --path-spec, and interpreting stable JSON diagnostics and 0/1/2 exit codes.
+description: This skill should be used when an agent needs to extract structured data from local files, directories, logs, JSON/JSONL/YAML/TOML/XML/HTML/CSV/TSV or stdin using the ux (UniExtract) CLI, or when a task would otherwise be solved with ad-hoc jq, grep, regex or Python parsing scripts. Covers composing the 8-stage pipeline, previewing inputs with --list, selecting files with --path-spec, and interpreting stable JSON diagnostics and 0/1/2 exit codes.
 ---
 
 # ux-extract
@@ -56,7 +56,7 @@ Read `code` and `exit_code` from stderr, not human wording. Use the decision tab
 - Treat `--max-results` as a hard error (exit 1), not a silent truncation.
 - Bind XPath prefixes with `--ns PREFIX=URI`; unbound prefixes fail at compile time with `Query(2)`.
 - On Windows Git Bash / MSYS2, set `MSYS2_ARG_CONV_EXCL='*'` or use PowerShell; otherwise `//a` inside `-e` becomes a UNC path and XPath silently matches nothing.
-- Do not treat `rc=0` with empty stdout and empty stderr as proof that a pipe was fully read. Prefer file inputs when completeness matters.
+- Do not treat an input-side broken pipe as silence: since 0.4.0 it is a `runtime(1)` diagnostic with `rc=1`. `rc=0` with empty stdout and empty stderr now means a genuine zero match only.
 - Do not invent `--path-regex`, `--root`, extraction hints, or capture injection: those are not part of the shipped CLI.
 
 ## Bundled resources

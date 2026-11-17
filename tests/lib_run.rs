@@ -2,15 +2,15 @@
 //!
 //! `src/main.rs` installs an empty panic hook in `--error-format json` mode and
 //! injects TTY state. A direct `run()` caller inherits neither, so these tests
-//! install their own hook and pin down the 0.3.1 diagnostic rule, which is
-//! keyed on the ERROR VARIANT, not the I/O direction:
+//! install their own hook and pin down the 0.4.0 diagnostic rule, which is
+//! keyed on the I/O DIRECTION:
 //!
-//! * `AppError::Io(BrokenPipe)` -> 0, no diagnostic (output side AND the input
-//!   paths that surface a bare `io::Error`).
-//! * `AppError::Runtime(String)` wrapping a read error -> 1 + `runtime` JSON.
+//! * output-side `AppError::Io(BrokenPipe)` -> 0, no diagnostic (normal pipe
+//!   termination, e.g. `| head`).
+//! * input-side read failure (a closed upstream pipe) -> 1 + `runtime` JSON.
 //!
-//! The direction-based narrowing is deliberately NOT part of 0.3.1: this round
-//! changes no code in `source.rs` / `output.rs` / `lib.rs` / `main.rs`.
+//! Input reads surface `AppError::Runtime` (never a bare `AppError::Io`) so the
+//! two directions stay distinguishable by error variant.
 use std::io::{self, BufRead, Cursor, Read, Write};
 use std::sync::{Mutex, MutexGuard};
 
@@ -190,12 +190,12 @@ fn a_runtime_wrapped_read_failure_is_reported() {
 }
 
 #[test]
-fn an_input_side_io_broken_pipe_is_still_zero() {
+fn an_input_side_broken_pipe_is_a_runtime_error() {
     let _guard = hook_guard();
     let _hook = QuietHook::install();
-    // Honest negative coverage for the two input paths that surface a bare
-    // AppError::Io: line-oriented read_until and the first fill_buf. 0.3.1 does
-    // NOT narrow by direction; it only documents the variant-based rule.
+    // 0.4.0 narrows BrokenPipe by direction: an input-side broken pipe (closed
+    // upstream) is a real read failure. Both input paths now wrap reads as
+    // AppError::Runtime, so they report `runtime(1)` instead of a silent 0.
     let cases: &[(&[&str], &str)] = &[
         (
             &["ux", "--error-format", "json", "-f", "text", "-e", "text()"],
@@ -220,13 +220,11 @@ fn an_input_side_io_broken_pipe_is_still_zero() {
                 uniextract::run(&parsed, &mut stdin, &mut stdout, &mut stderr)
             }
         };
-        assert_eq!(code, 0, "{which}: {:?}", String::from_utf8_lossy(&stderr));
+        assert_eq!(code, 1, "{which}: {:?}", String::from_utf8_lossy(&stderr));
         assert!(stdout.is_empty(), "{which}");
-        assert!(
-            stderr.is_empty(),
-            "{which}: {:?}",
-            String::from_utf8_lossy(&stderr)
-        );
+        let diagnostic = diagnostic_from(&stderr);
+        assert_eq!(diagnostic["code"], "runtime", "{which}");
+        assert_eq!(diagnostic["exit_code"], 1, "{which}");
     }
 }
 

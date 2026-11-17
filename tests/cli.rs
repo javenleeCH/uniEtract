@@ -31,7 +31,7 @@ fn help_documents_path_spec_contract_and_roadmap() {
         "read-only string metadata",
         "--max-depth is ignored here",
         "no stable public API is promised",
-        "Input-side BrokenPipe becomes runtime(1) with a diagnostic in 0.4.0",
+        "Input-side BrokenPipe is a runtime(1) error with a diagnostic",
     ] {
         assert!(help.contains(expected), "--help is missing {expected}");
     }
@@ -248,6 +248,63 @@ fn gbk_fallback_is_decoded() {
 }
 
 #[test]
+fn explicit_gbk_and_gb18030_decode_without_fallback_warning() {
+    // GBK bytes for "中文" (also valid GB18030, its superset).
+    let gbk = vec![0xD6, 0xD0, 0xCE, 0xC4];
+    for encoding in ["gbk", "gb18030"] {
+        let mut command = ux();
+        command.args([
+            "-f",
+            "text",
+            "--text-mode",
+            "raw",
+            "--encoding",
+            encoding,
+            "-O",
+            "text",
+            "-e",
+            "text()",
+        ]);
+        command.write_stdin(gbk.clone());
+        let output = command.assert().success().get_output().clone();
+        assert_eq!(output.stdout, "中文\n".as_bytes(), "encoding={encoding}");
+        assert!(
+            !String::from_utf8_lossy(&output.stderr).contains("assumed"),
+            "encoding={encoding} must not warn about fallback: {:?}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[test]
+fn gbk_and_gb18030_decode_identically() {
+    // U+20000 (𠀀) in GB18030 is the 4-byte sequence 0x95 0x32 0x82 0x36.
+    // encoding_rs maps the WHATWG `gbk` label to the same gb18030 decoder, so
+    // `--encoding gbk` and `--encoding gb18030` are functional aliases: both
+    // accept the 4-byte codepoint. Pin that behavior so a future assumption
+    // that GBK "rejects 4-byte sequences" cannot silently change deps' meaning.
+    let four_byte = vec![0x95, 0x32, 0x82, 0x36];
+    for encoding in ["gbk", "gb18030"] {
+        let mut command = ux();
+        command.args([
+            "-f",
+            "text",
+            "--text-mode",
+            "raw",
+            "--encoding",
+            encoding,
+            "-O",
+            "text",
+            "-e",
+            "text()",
+        ]);
+        command.write_stdin(four_byte.clone());
+        let out = command.assert().success().get_output().clone();
+        assert_eq!(out.stdout, "𠀀\n".as_bytes(), "encoding={encoding}");
+    }
+}
+
+#[test]
 fn binary_input_is_skipped_with_warning() {
     let mut command = ux();
     command.args(["-f", "text", "--text-mode", "raw", "-e", "text()"]);
@@ -373,6 +430,62 @@ fn no_default_ignore_reincludes_ignored_directories() {
     .assert()
     .success()
     .stdout("keep\ngen\n");
+}
+
+#[test]
+fn path_regex_post_filters_the_normalized_relative_path() {
+    let dir = tempdir().unwrap();
+    fs::create_dir_all(dir.path().join("logs")).unwrap();
+    fs::create_dir_all(dir.path().join("data")).unwrap();
+    fs::write(dir.path().join("logs/app_a.log"), "a").unwrap();
+    fs::write(dir.path().join("logs/app_b.log"), "b").unwrap();
+    fs::write(dir.path().join("data/x.json"), "x").unwrap();
+
+    ux().args([
+        "-f",
+        "text",
+        "-O",
+        "text",
+        "-e",
+        "text()",
+        "--path-regex",
+        r"logs/.*\.log",
+        dir.path().to_str().unwrap(),
+    ])
+    .assert()
+    .success()
+    .stdout("a\nb\n");
+}
+
+#[test]
+fn root_reanchors_relative_paths() {
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("sub");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("a.txt"), "a").unwrap();
+
+    ux().args([
+        "-f",
+        "text",
+        "-O",
+        "text",
+        "-e",
+        "text()",
+        "--root",
+        root.to_str().unwrap(),
+        "a.txt",
+    ])
+    .assert()
+    .success()
+    .stdout("a\n");
+}
+
+#[test]
+fn invalid_path_regex_is_a_query_error_before_reading() {
+    ux().args(["-e", "text()", "--path-regex", "(", "."])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("invalid --path-regex"));
 }
 
 #[test]

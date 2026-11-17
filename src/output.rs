@@ -72,6 +72,12 @@ impl<'writer> OutputSink<'writer> {
         self.flush_if_line_buffered()
     }
 
+    /// Number of items accepted so far (records for jsonl/text, elements for
+    /// `-O json`). Exposed for the post-run "zero results" observability warning.
+    pub fn emitted(&self) -> u64 {
+        self.emitted
+    }
+
     /// Discard a pending `-O json` aggregate. A partial array would look like a
     /// complete statistic, so a failed run must never write one.
     pub fn abandon(&mut self) {

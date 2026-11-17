@@ -60,7 +60,7 @@
 | `error.rs` | `AppError` / `ErrorCode` / `diagnostic()` 结构化字段 |
 | `diagnostic.rs` | `Reporter`：stderr 单行诊断、文本/JSON 双格式、`--quiet` 压制 |
 | `dsl.rs` + `dsl.pest` | 管道解析：grammar 管结构，Rust 侧管阶段名与字面量 |
-| `stage/{jq,xpath,regex,mod}.rs` | 7 阶段的具体实现 |
+| `stage/{jq,xpath,regex,mod}.rs` | 8 阶段的具体实现 |
 | `engine.rs` | `Pipeline` / `Relay`：阶段间统一数据模型传递 |
 | `model.rs` | `Item`、`Origin`（含 `captures`）、`ItemSink` |
 | `types.rs` | `Limits`：体积与结果数上限 |
@@ -88,7 +88,7 @@ main → Cli::parse → run(cli, stdin, stdout, stderr)
 5. 每个输入经 `InputSource` → `process_source` → `OutputSink`；`Eval` 错误携带 `Origin`（`path` / `line` / `record` / `stage`）。
 6. `--with-source` 把 `Origin` 包进输出；`max_results` 触顶抛 `Limit`，`-O json` 调用 `abandon()` 丢弃未完成的聚合数组。
 
-**7 个阶段**（`dsl.rs::StageSpec`）：`jq` / `xpath` / `re` / `text` / `attr` / `split` / `slurp`。`slurp()` 与 `-O json` 会在写第一个字节前缓存全部结果；默认 64 KiB 批量写，`--line-buffered` 或 TTY 时逐条 flush。
+**8 个阶段**（`dsl.rs::StageSpec`）：`jq` / `xpath` / `re` / `text` / `attr` / `split` / `slurp` / `captures`。`slurp()` 与 `-O json` 会在写第一个字节前缓存全部结果；默认 64 KiB 批量写，`--line-buffered` 或 TTY 时逐条 flush。
 
 **panic 收敛**：`catch_unwind` 无条件把主线程 unwind panic 转成 `runtime(1)` 结构化诊断；`--error-format json` 额外安装空 panic hook 保证 stderr 纯净。库直调 `run()` 同样收敛，但不继承进程级 hook。
 
@@ -117,7 +117,7 @@ main → Cli::parse → run(cli, stdin, stdout, stderr)
 | `io` | IO 错误 | 1 |
 | `warning` | 非致命告警 | 0 |
 
-**BrokenPipe（0.3.x 当前行为）**：判定按错误变体而非 I/O 方向。`AppError::Io(BrokenPipe)` 一律视为正常终止（退出 0、不写诊断），`Runtime(String)` 包裹的读错误为 `runtime(1)`。输入侧首次 `fill_buf` 与逐行 `read_until` 产生的 BrokenPipe 同样返回 0。`ux --help` 的 ROADMAP、`README.md` 与 `CHANGELOG.md` 记录了 0.4.0 的方向区分计划。
+**BrokenPipe（0.4.0 行为）**：判定按 **I/O 方向**。**输出侧** `AppError::Io(BrokenPipe)` 视为正常终止（退出 0、不写诊断，例 `| head` 提前关闭）；**输入侧**读失败——含上游管道破裂——一律包装为 `Runtime` 并输出 `runtime(1)` 诊断。`source.rs` 的 `fill_buf` 与 `input.rs` 的逐行 `read_until` 均显式 `map_err` 为 `Runtime`，与整文档读一致，因此输入侧不再有「裸 `Io` 被误判为输出侧成功」的路径。
 
 `--list`（别名 `--dry-run`）不打开文件、不需要 `-e`；`--completions` 支持 bash / zsh / fish / powershell / elvish；`--quiet` 的别名为 `--silent`。
 
@@ -133,23 +133,23 @@ main → Cli::parse → run(cli, stdin, stdout, stderr)
 
 ## 7. 测试与门禁
 
-Rust 测试共 **167 项**：
+Rust 测试共 **175 项**：
 
 | 位置 | 项数 | 覆盖 |
 |---|---|---|
 | `src/*` 内嵌单测 | 92 | 各模块单元行为，含 `pathspec.rs` 11 项 |
-| `tests/agent.rs` | 21 | Agent 契约：诊断、quiet、list、no-stdin、completions、TTY、帮助文本 |
-| `tests/cli.rs` | 30 | 端到端管道、格式、错误码、`--help` 的 PATH SPEC / ROADMAP 文案 |
+| `tests/agent.rs` | 23 | Agent 契约：诊断、quiet、list、no-stdin、completions、TTY、帮助文本、零匹配汇总、`--list` format |
+| `tests/cli.rs` | 35 | 端到端管道、格式、错误码、编码、path-regex/root、`--help` 文案 |
 | `tests/jq_compat.rs` | 3 | jq 兼容性夹具 |
-| `tests/lib_run.rs` | 6 | 库直调 `run()`：stdout 纯净、BrokenPipe 两类变体、usage、panic 收敛 |
-| `tests/pathspec.rs` | 7 | `--path-spec` CLI 端到端 |
+| `tests/lib_run.rs` | 6 | 库直调 `run()`：stdout 纯净、BrokenPipe 方向区分、usage、panic 收敛 |
+| `tests/pathspec.rs` | 8 | `--path-spec` CLI 端到端 + `captures()` 注入 |
 | `tests/pathspec_scenario.rs` | 8 | NativeHeap 12 夹具的 8 项场景断言 |
 
 工程门禁：
 
 - `sample/smoke.py` 45 条冒烟；`sample/export_cases.py --check` 保证 `sample/CASES.md` 与用例同步。
 - `.github/scripts/check_contract_docs.py`：断言必需文件存在、扫描过期契约文案、校验 12 个 NativeHeap 夹具。
-- `.github/scripts/check_test_count.py`：以 `cargo test -- --list` 的汇总行统计测试数并锚定 167。
+- `.github/scripts/check_test_count.py`：以 `cargo test -- --list` 的汇总行统计测试数并锚定 175。
 - `.github/scripts/check_fuzz_manifest.py`：`cargo metadata --manifest-path fuzz/Cargo.toml --locked --format-version 1`。
 - `.github/workflows/ci.yml`：双 OS `verify`（fmt / clippy `-D warnings` / test / release / smoke / 三个 Python 门禁）与 Rust 1.88 `msrv` job；工具链固定为 1.88，避免 `-D warnings` 被新 lint 破坏；无 `python -c` 内联，bash 与 pwsh 行为一致。
 
@@ -158,7 +158,7 @@ Rust 测试共 **167 项**：
 | # | 决定 | 理由 |
 |---|---|---|
 | A1 | CLI 是唯一稳定契约，库接口不公共化 | 内部模块可自由重构，调用方不被 `pub` 面绑死 |
-| A2 | 7 阶段共用单记录流与统一 `Item` | 组合能力来自管道，而非子命令矩阵 |
+| A2 | 8 阶段共用单记录流与统一 `Item` | 组合能力来自管道，而非子命令矩阵 |
 | A3 | 结构化诊断 + 0/1/2 退出码 | Agent / CI 可基于 `code` 分支重试，不解析人类文案 |
 | A4 | `catch_unwind` 无条件收敛 + JSON 模式空 panic hook | 进程级保证 stderr 纯净与退出码稳定 |
 | A5 | 限制触顶即停，`-O json` 失败时 `abandon()` | 不输出误导性的部分聚合 |
