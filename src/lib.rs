@@ -210,7 +210,7 @@ fn run_inner(
         let mut source = match InputSource::open(reader, path, captures, cli, reporter) {
             Ok(Opened::Ready(source)) => source,
             Ok(Opened::Skipped(warning)) => {
-                reporter.warn(&warning);
+                reporter.warn_result_affecting(&warning);
                 continue;
             }
             Err(error) => {
@@ -227,7 +227,7 @@ fn run_inner(
         };
 
         if cli.skip_incompatible && !pipeline.accepts_source(source.format) {
-            reporter.warn(&format!(
+            reporter.warn_result_affecting(&format!(
                 "skipping {}: source type is incompatible with the first pipeline stage",
                 source
                     .path
@@ -296,9 +296,9 @@ fn run_inner(
     // Observable zero-match: an Agent relying on exit codes alone cannot tell a
     // genuine zero match from a silently skipped / empty input set. When at
     // least one file was actually opened and the run produced zero results with
-    // no error, warn (suppressible with --quiet). stdout stays data-only.
+    // no error, warn. This is result-affecting, so it survives --quiet.
     if !had_errors && opened_files > 0 && output.emitted() == 0 {
-        reporter.warn(&format!(
+        reporter.warn_result_affecting(&format!(
             "processed {opened_files} file{}, 0 results",
             if opened_files == 1 { "" } else { "s" }
         ));

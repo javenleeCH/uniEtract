@@ -57,7 +57,7 @@ impl<'reader> InputSource<'reader> {
         // zero-match file are indistinguishable). Empty stdin stays silent:
         // a closed pipe is normal, a lost file is not.
         if prefix.is_empty() && path.is_some() {
-            reporter.warn(&format!("`{label}`: empty file (no records)"));
+            reporter.warn_result_affecting(&format!("`{label}`: empty file (no records)"));
         }
         let (encoding, bom_length, assumed) = resolve_encoding(&prefix, cli.encoding, &label)?;
         if let Some(name) = assumed {

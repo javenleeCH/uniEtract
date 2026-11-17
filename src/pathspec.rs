@@ -340,15 +340,16 @@ fn capture_json(segment: &Segment, hit: &regex::Captures<'_>) -> BTreeMap<String
 }
 
 /// Single funnel for the three discovery anomalies so tests exercise exactly
-/// the formatting used in production. `--quiet` / `--error-format json` stay
-/// in `Reporter`.
+/// the formatting used in production. These drop entries, so they are
+/// result-affecting and survive `--quiet`. `--error-format json` stays in
+/// `Reporter`.
 fn warn_io(
     kind: &str,
     path: &std::path::Path,
     error: &std::io::Error,
     reporter: &mut Reporter<'_>,
 ) {
-    reporter.warn(&format!("kind={kind} path={}: {error}", path.display()));
+    reporter.warn_result_affecting(&format!("kind={kind} path={}: {error}", path.display()));
 }
 
 /// Segment-level traversal: an unmatched directory is never entered (§5.1).
@@ -459,7 +460,7 @@ pub fn discover(
     }
     found.sort_by(|left, right| left.1.cmp(&right.1));
     if found.is_empty() {
-        reporter.warn("no input files matched");
+        reporter.warn_result_affecting("no input files matched");
     }
     Ok(found
         .into_iter()
@@ -582,7 +583,7 @@ mod tests {
     }
 
     #[test]
-    fn discovery_warnings_are_structured_and_quietable() {
+    fn discovery_warnings_are_structured_and_result_affecting() {
         use crate::cli::ErrorFormat;
         use std::path::PathBuf;
 
@@ -606,7 +607,8 @@ mod tests {
                 "{text}"
             );
         }
-        assert!(emit(ErrorFormat::Text, true).is_empty());
+        // These drop entries, so they are result-affecting and survive --quiet.
+        assert_eq!(emit(ErrorFormat::Text, true), text);
 
         let json = emit(ErrorFormat::Json, false);
         let lines: Vec<JsonValue> = json
@@ -617,6 +619,7 @@ mod tests {
         for line in &lines {
             assert_eq!(line["code"], "warning");
             assert_eq!(line["exit_code"], 0);
+            assert_eq!(line["category"], "result_set");
         }
         for (index, kind) in ["read_dir ", "read_dir_entry ", "file_type "]
             .into_iter()

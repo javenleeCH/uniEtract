@@ -111,7 +111,7 @@ pub fn discover(cli: &Cli, reporter: &mut Reporter<'_>) -> Result<Vec<Input>, Ap
     }
 
     if !any_matched {
-        reporter.warn("no input files matched");
+        reporter.warn_result_affecting("no input files matched");
     }
     Ok(inputs)
 }
@@ -222,7 +222,7 @@ fn walk_directory(
                 if cli.strict {
                     return Err(AppError::Runtime(message));
                 }
-                reporter.warn(&message);
+                reporter.warn_result_affecting(&message);
             }
         }
     }
@@ -389,16 +389,19 @@ mod tests {
     }
 
     #[test]
-    fn quiet_suppresses_discovery_warning() {
+    fn quiet_does_not_suppress_result_affecting_discovery_warning() {
         let dir = tempdir().unwrap();
         let pattern = format!("{}/*.none", dir.path().to_str().unwrap());
-        let cli = cli(&["ux", "-e", "text()", &pattern]);
+        let cli = cli(&["ux", "-e", "text()", "--quiet", &pattern]);
         let mut stderr = Vec::new();
         {
             let mut reporter = Reporter::new(&mut stderr, ErrorFormat::Text, true);
             let inputs = discover(&cli, &mut reporter).unwrap();
             assert!(inputs.is_empty());
         }
-        assert!(stderr.is_empty());
+        // "no input files matched" drops the whole input set, so it must bypass
+        // --quiet and remain observable.
+        let text = String::from_utf8(stderr).unwrap();
+        assert!(text.contains("no input files matched"), "{text}");
     }
 }

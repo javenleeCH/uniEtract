@@ -8,13 +8,15 @@
 - `ux-extract.zip` 成为 GitHub Release 固定资产：`package_release.py --collect` 新增 `--extra-file`，Release workflow 发布时把 `dist/ux-extract.zip` 连同校验和一并上传（`SHA256SUMS` 含其条目）。下载地址：`https://github.com/javenleeCH/uniEtract/releases/latest/download/ux-extract.zip`（或 `releases/download/v<版本>/ux-extract.zip` 钉住版本）。
 - **修复（Windows）**：`--with-source` 的 `source.path` 改为与 `--list` 一致的正斜杠输出。此前 Windows 上 `--list` 输出 `D:/OH/...` 而 `source.path` 输出 `D:\OH\...`，两个稳定契约输出无法直接对账（`comm` 级联全失配）。新增 `model.rs` 回归测试；Unix 行为不变（文件名含字面 `\` 时与 `--list` 的既有归一化同样处理）。
 - **新增（`--path-spec`）**：`re:` 片段内的嵌套命名组（如 `.*(?<ts>\d{8}_\d{6})`）现在与显式占位一并产出捕获。0.3.1 会静默丢弃它们——字段从文件名里拆出来却拿不到，是实测反馈的 P1 问题。跨段同名（含嵌套组与显式占位重名）在打开目录前 `Usage(2)`；嵌套组计入 32 捕获预算；片段内冒号（`\d{2}:\d{2}`）行为不变（本就合法）。
-- **新增**：空文件（0 字节、有路径）在打开时输出一条 warning `empty file (no records)`；空 stdin 不警告。此前 35,999 清单 vs 35,998 结果的差 1 只能靠人工对账定位。`--quiet` 可压制；`--error-format json` 下为标准 warning 对象。
+- **新增**：空文件（0 字节、有路径）在打开时输出一条 warning `empty file (no records)`；空 stdin 不警告。此前 35,999 清单 vs 35,998 结果的差 1 只能靠人工对账定位。这是结果影响型告警，**不受 `--quiet` 压制**；`--error-format json` 下带 `"category":"result_set"`。
 - **修复（BrokenPipe 方向区分）**：退出码判定从「按错误变体」改为「按 I/O 方向」。**输出侧** `AppError::Io(BrokenPipe)`（例如 `| head` 提前关闭）仍退出 0 且不写诊断；**输入侧**读失败——含上游管道破裂——不再被静默判成功，统一输出 `runtime(1)` 诊断。`source.rs` 的 `fill_buf` 与 `input.rs` 的逐行 `read_until` 显式 `map_err` 为 `Runtime`，消除「输入侧裸 `Io` 被误判为输出侧正常终止」的路径。`tests/lib_run.rs` 的原「输入侧裸 IO BrokenPipe=0」负向用例相应翻转为 `runtime(1)` 断言。
 - **工程**：新增 `rust-toolchain.toml` 钉住 1.88.0（含 rustfmt/clippy），本地 `cargo` 命令默认复现 CI 工具链，不再依赖手工 `cargo +1.88.0`.
 - **测试**：补 `--encoding gbk`/`gb18030` 显式路径端到端用例。实测确认 `encoding_rs` 把 WHATWG `gbk` 标签映射到同一 gb18030 解码器，二者是功能别名（含 4 字节码点 U+20000），用例把该行为钉死，防止未来依赖升级静默改变二者语义。
-- **新增（可观测零匹配）**：当一次运行打开了 ≥1 个文件、无错误、且产出 **0 条结果**时，向 stderr 打一条可 `--quiet` 压制的 warning（`processed N file(s), 0 results`）。此前这是最高频、最难自救的静默失败——Agent 单靠 `rc=0` + 空 stdout 无法区分「真零匹配」与「文件被跳过」。stdin 零匹配保持安静（空管道是正常），退出码仍为 0，stdout 仍只承载数据。
+- **新增（可观测零匹配）**：当一次运行打开了 ≥1 个文件、无错误、且产出 **0 条结果**时，向 stderr 打一条 warning（`processed N file(s), 0 results`）。此前这是最高频、最难自救的静默失败——Agent 单靠 `rc=0` + 空 stdout 无法区分「真零匹配」与「文件被跳过」。stdin 零匹配保持安静（空管道是正常），退出码仍为 0，stdout 仍只承载数据。这是结果影响型告警，**不受 `--quiet` 压制**。
 - **新增（`--list` format 提示）**：`--list` 清单每行追加 `"format"` 字段（仅当格式可从 `-f` 或扩展名确定时）。这是**内容无关**的扩展名提示——`--list` 仍不打开文件；未知扩展名/无扩展名文件省略该字段而不猜测（无扩展名 JSONL 的误判仍需显式 `-f jsonl`）。字段只追加、不重命名，符合稳定契约。
 - **新增（captures 显式注入）**：新增第 8 个阶段 `captures()`——把当前条目的 `--path-spec` captures 对象显式注入记录流（opt-in），默认 captures 仍是只读元数据、不隐式参与求值。不用 `--path-spec` 时 `captures()` 产出 `null`。接受任意输入、产出 `Data`。配合 `--with-source` 的 `source.captures` 可让 Agent 在流水线内直接取 `{ts, mins, file}` 等命名捕获。
+- **新增（`check(FILTER)` 轻量 schema 断言）**：新增第 9 个阶段 `check(FILTER)`——用 jq 真值逐条断言记录满足 FILTER，通过则**原样传递**记录（不改变记录流），失败为 `eval(1)`。这填补了 Agent/CI「抽得可信」的最后一公里：单条记录的局部 schema 校验（如 `check(.n > 0)`），不涉及跨文件 join/关系运算。
+- **收紧（`--quiet` 语义）**：`--quiet` 现在只压制**非结果影响**的 warning（如 `assumed GB18030`、`--compact only affects -O json`、`duplicate --ns`）。改变结果集的 warning——`no input files matched`、`binary input skipped`、`incompatible`、`empty file`、`processed N file(s), 0 results`、发现遍历异常——**不再受 `--quiet` 压制**，`--error-format json` 下额外带 `"category":"result_set"`。这样依赖退出码的 Agent 也能放心加 `--quiet`，而不会把「文件被跳过/真零匹配」误判为「静默成功」。
 - **新增（`--path-regex` / `--root`）**：输入选择新增两个可选入口，与 `--path-spec` **并存不替换**。`--path-regex REGEX` 用正则对归一化相对路径做后置过滤（可重复、全匹配 AND；不剪枝遍历）；`--root DIR` 把相对位置参数重新锚定到 DIR，绝对路径不受影响。二者均与 `--exclude` / `--fuzzy` 组合。选型决策表见 README「输入选择」段。
 
 ## 0.3.1 — 2026-11-15
@@ -51,7 +53,7 @@
 - `tests/cli.rs` 新增 `--help` 的 PATH SPEC / ROADMAP 文案正向回归断言。
 - 修复 GitHub CI：Rust 1.88 clippy 的 `uninlined_format_args` 会让 `tests/pathspec.rs` / `tests/pathspec_scenario.rs` 的 `assert_eq!` 在 `-D warnings` 下失败；两处改用内联格式参数。README 补上 `cargo +1.88.0 ...` 的本地同工具链复现命令。
 - 新增 tag 驱动的发布流水线 `.github/workflows/release.yml`：`v*` tag 触发四个平台（Linux x86_64、Windows x86_64、macOS x86_64 / arm64）的 `--locked` release 构建与打包，由 `check_release_version.py` 统一校验版本、`package_release.py` 生成压缩包与 `SHA256SUMS`，发布 job 校验全部产物后写入 GitHub Release；CI verify 增加版本一致性步骤。
-- 当前 Rust 测试共 **175 项**（92 单测 + 23 Agent 契约 + 35 CLI + 3 兼容 + 6 库直调 + 8 pathspec + 8 场景），在 Rust 1.88 下全部通过。
+- 当前 Rust 测试共 **177 项**（92 单测 + 23 Agent 契约 + 37 CLI + 3 兼容 + 6 库直调 + 8 pathspec + 8 场景），在 Rust 1.88 下全部通过。
 
 ### 0.4.0 时间表（已定稿）
 

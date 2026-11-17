@@ -17,6 +17,7 @@ pub enum StageSpec {
     Slurp,
     Split(String),
     Captures,
+    Check(String),
 }
 
 /// Parse a whole pipeline. `dsl.pest` owns the structural scan (top-level
@@ -139,6 +140,8 @@ fn build_stage(name: &str, argument: &str) -> Result<StageSpec, AppError> {
         "split" => Ok(StageSpec::Split(parse_string_argument(inner, "split")?)),
         "captures" if inner.is_empty() => Ok(StageSpec::Captures),
         "captures" => Err(AppError::Query("captures() takes no arguments".to_owned())),
+        "check" if !inner.is_empty() => Ok(StageSpec::Check(inner.to_owned())),
+        "check" => Err(AppError::Query("check requires a filter".to_owned())),
         _ => Err(AppError::Query(format!("unknown stage `{name}`"))),
     }
 }

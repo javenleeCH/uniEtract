@@ -58,9 +58,9 @@
 | `lib.rs` | `run()` / `run_inner()` 编排、`catch_unwind` 兜底、`--list` 短路、诊断收口 |
 | `cli.rs` | `Cli` 参数定义、`ValueEnum`、`validate()`、长帮助文本 |
 | `error.rs` | `AppError` / `ErrorCode` / `diagnostic()` 结构化字段 |
-| `diagnostic.rs` | `Reporter`：stderr 单行诊断、文本/JSON 双格式、`--quiet` 压制 |
+| `diagnostic.rs` | `Reporter`：stderr 单行诊断、文本/JSON 双格式、`--quiet` 只压非结果影响 warning |
 | `dsl.rs` + `dsl.pest` | 管道解析：grammar 管结构，Rust 侧管阶段名与字面量 |
-| `stage/{jq,xpath,regex,mod}.rs` | 8 阶段的具体实现 |
+| `stage/{jq,xpath,regex,mod}.rs` | 9 阶段的具体实现 |
 | `engine.rs` | `Pipeline` / `Relay`：阶段间统一数据模型传递 |
 | `model.rs` | `Item`、`Origin`（含 `captures`）、`ItemSink` |
 | `types.rs` | `Limits`：体积与结果数上限 |
@@ -88,7 +88,7 @@ main → Cli::parse → run(cli, stdin, stdout, stderr)
 5. 每个输入经 `InputSource` → `process_source` → `OutputSink`；`Eval` 错误携带 `Origin`（`path` / `line` / `record` / `stage`）。
 6. `--with-source` 把 `Origin` 包进输出；`max_results` 触顶抛 `Limit`，`-O json` 调用 `abandon()` 丢弃未完成的聚合数组。
 
-**8 个阶段**（`dsl.rs::StageSpec`）：`jq` / `xpath` / `re` / `text` / `attr` / `split` / `slurp` / `captures`。`slurp()` 与 `-O json` 会在写第一个字节前缓存全部结果；默认 64 KiB 批量写，`--line-buffered` 或 TTY 时逐条 flush。
+**9 个阶段**（`dsl.rs::StageSpec`）：`jq` / `xpath` / `re` / `text` / `attr` / `split` / `slurp` / `captures` / `check`。`slurp()` 与 `-O json` 会在写第一个字节前缓存全部结果；默认 64 KiB 批量写，`--line-buffered` 或 TTY 时逐条 flush。
 
 **panic 收敛**：`catch_unwind` 无条件把主线程 unwind panic 转成 `runtime(1)` 结构化诊断；`--error-format json` 额外安装空 panic hook 保证 stderr 纯净。库直调 `run()` 同样收敛，但不继承进程级 hook。
 
@@ -99,7 +99,7 @@ main → Cli::parse → run(cli, stdin, stdout, stderr)
 | 关注点 | 契约 |
 |---|---|
 | stdout | 只承载数据；`-O jsonl` 每行紧凑 JSON，`-O json` 单个数组，`-O text` 原样文本；`--list` 输出输入清单 JSONL |
-| stderr | 每条诊断一行；`--error-format json` 时每行都是可解析 JSON；`--quiet` 只压 warning，错误必出 |
+| stderr | 每条诊断一行；`--error-format json` 时每行都是可解析 JSON；`--quiet` 只压**非结果影响** warning，错误必出，结果影响 warning（`category:"result_set"`）照出 |
 | 退出码 | `0` 成功（含零匹配）、`1` 运行期错误、`2` 参数/编译错误 |
 | 顺序 | 文件字典序串行；`--list` 顺序与实际处理顺序一致；多次调用字节级稳定 |
 | 挂起防护 | 无路径默认读 stdin；stdin 是终端且未显式给 `-` 时返回 `Usage(2)`；`--no-stdin` 彻底禁用 |
@@ -133,13 +133,13 @@ main → Cli::parse → run(cli, stdin, stdout, stderr)
 
 ## 7. 测试与门禁
 
-Rust 测试共 **175 项**：
+Rust 测试共 **177 项**：
 
 | 位置 | 项数 | 覆盖 |
 |---|---|---|
 | `src/*` 内嵌单测 | 92 | 各模块单元行为，含 `pathspec.rs` 11 项 |
 | `tests/agent.rs` | 23 | Agent 契约：诊断、quiet、list、no-stdin、completions、TTY、帮助文本、零匹配汇总、`--list` format |
-| `tests/cli.rs` | 35 | 端到端管道、格式、错误码、编码、path-regex/root、`--help` 文案 |
+| `tests/cli.rs` | 37 | 端到端管道、格式、错误码、编码、path-regex/root、check()、`--help` 文案 |
 | `tests/jq_compat.rs` | 3 | jq 兼容性夹具 |
 | `tests/lib_run.rs` | 6 | 库直调 `run()`：stdout 纯净、BrokenPipe 方向区分、usage、panic 收敛 |
 | `tests/pathspec.rs` | 8 | `--path-spec` CLI 端到端 + `captures()` 注入 |
@@ -149,7 +149,7 @@ Rust 测试共 **175 项**：
 
 - `sample/smoke.py` 45 条冒烟；`sample/export_cases.py --check` 保证 `sample/CASES.md` 与用例同步。
 - `.github/scripts/check_contract_docs.py`：断言必需文件存在、扫描过期契约文案、校验 12 个 NativeHeap 夹具。
-- `.github/scripts/check_test_count.py`：以 `cargo test -- --list` 的汇总行统计测试数并锚定 175。
+- `.github/scripts/check_test_count.py`：以 `cargo test -- --list` 的汇总行统计测试数并锚定 177。
 - `.github/scripts/check_fuzz_manifest.py`：`cargo metadata --manifest-path fuzz/Cargo.toml --locked --format-version 1`。
 - `.github/workflows/ci.yml`：双 OS `verify`（fmt / clippy `-D warnings` / test / release / smoke / 三个 Python 门禁）与 Rust 1.88 `msrv` job；工具链固定为 1.88，避免 `-D warnings` 被新 lint 破坏；无 `python -c` 内联，bash 与 pwsh 行为一致。
 
@@ -158,7 +158,7 @@ Rust 测试共 **175 项**：
 | # | 决定 | 理由 |
 |---|---|---|
 | A1 | CLI 是唯一稳定契约，库接口不公共化 | 内部模块可自由重构，调用方不被 `pub` 面绑死 |
-| A2 | 8 阶段共用单记录流与统一 `Item` | 组合能力来自管道，而非子命令矩阵 |
+| A2 | 9 阶段共用单记录流与统一 `Item` | 组合能力来自管道，而非子命令矩阵 |
 | A3 | 结构化诊断 + 0/1/2 退出码 | Agent / CI 可基于 `code` 分支重试，不解析人类文案 |
 | A4 | `catch_unwind` 无条件收敛 + JSON 模式空 panic hook | 进程级保证 stderr 纯净与退出码稳定 |
 | A5 | 限制触顶即停，`-O json` 失败时 `abandon()` | 不输出误导性的部分聚合 |

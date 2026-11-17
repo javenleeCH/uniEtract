@@ -489,6 +489,26 @@ fn invalid_path_regex_is_a_query_error_before_reading() {
 }
 
 #[test]
+fn check_stage_asserts_each_record_and_passes_through() {
+    // check() passes the record through unchanged when the filter is truthy.
+    ux().args(["-f", "jsonl", "-O", "text", "-e", "check(.n > 0) | jq(.n)"])
+        .write_stdin("{\"n\":1}\n{\"n\":2}\n")
+        .assert()
+        .success()
+        .stdout("1\n2\n");
+}
+
+#[test]
+fn check_stage_fails_the_run_on_a_violating_record() {
+    // A record that fails the assertion is an eval error (exit 1), not silent.
+    ux().args(["-f", "jsonl", "-O", "text", "-e", "check(.n > 0) | jq(.n)"])
+        .write_stdin("{\"n\":1}\n{\"n\":-5}\n")
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("check failed"));
+}
+
+#[test]
 fn size_limits_report_clear_errors() {
     ux().args(["-f", "json", "--max-input-size", "3", "-e", "text()"])
         .write_stdin("{\"a\":1}")

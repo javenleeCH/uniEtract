@@ -28,6 +28,19 @@ impl<'a> Reporter<'a> {
         if self.quiet {
             return;
         }
+        self.emit_warning(message, false);
+    }
+
+    /// Non-fatal diagnostics that change the result set (skipped files, skipped
+    /// inputs, empty inputs, zero matches). These are never suppressed by
+    /// `--quiet`: an agent that silenced warnings must still see that it may be
+    /// processing fewer inputs than it asked for. In `--error-format json` they
+    /// carry `"category": "result_set"` so consumers can distinguish them.
+    pub fn warn_result_affecting(&mut self, message: &str) {
+        self.emit_warning(message, true);
+    }
+
+    fn emit_warning(&mut self, message: &str, result_affecting: bool) {
         match self.format {
             ErrorFormat::Text => {
                 let _ = writeln!(self.stderr, "ux: warning: {message}");
@@ -37,6 +50,12 @@ impl<'a> Reporter<'a> {
                 object.insert("code".to_owned(), JsonValue::String("warning".to_owned()));
                 object.insert("message".to_owned(), JsonValue::String(message.to_owned()));
                 object.insert("exit_code".to_owned(), JsonValue::Number(0.into()));
+                if result_affecting {
+                    object.insert(
+                        "category".to_owned(),
+                        JsonValue::String("result_set".to_owned()),
+                    );
+                }
                 let _ = writeln!(self.stderr, "{}", JsonValue::Object(object));
             }
         }

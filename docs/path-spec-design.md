@@ -88,7 +88,7 @@ data/{ts:re:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}}_SRRG/{svc:glob:*}/txt/{f:glob:*
 | `read_dir_entry` | `ReadDir` 迭代单条目失败，跳过该条目 |
 | `file_type` | `entry.file_type()` 失败，跳过该条目 |
 
-文本模式为 `ux: warning: ...`；`--error-format json` 为 `{"code":"warning","message":...,"exit_code":0}`；`--quiet` 压制这三类告警。
+文本模式为 `ux: warning: ...`；`--error-format json` 为 `{"code":"warning","message":...,"exit_code":0,"category":"result_set"}`；这三类告警是结果影响型，**不受 `--quiet` 压制**（丢文件不可静默）。
 
 | 场景 | 结果 |
 |---|---|

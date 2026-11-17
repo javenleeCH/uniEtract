@@ -22,7 +22,7 @@ ux [FLAGS] -e 'stage(...) | stage(...)' [PATH|GLOB|- ...]
 | `--list`, `--dry-run` | 只输出输入集 JSONL，不读文件内容；每行带 `type`/`path`（及 path-spec 的 `captures`），并追加 `format`（仅当格式可由 `-f` 或扩展名确定；内容无关提示） |
 | `--completions SHELL` | bash / zsh / fish / powershell / elvish |
 | `--error-format` | `text`（默认）\| `json` |
-| `--quiet`, `--silent` | 只压 warning，错误照常输出 |
+| `--quiet`, `--silent` | 只压**非结果影响** warning，错误照常输出；结果影响 warning（跳文件/空文件/没命中/零匹配）照出，JSON 带 `"category":"result_set"` |
 | `--no-stdin` | 完全拒绝 stdin（隐式或 `-`），CI / agent 必加 |
 | `--with-source` | 输出 `{value, source:{path,line,record,captures}}`；与 `-O text` 互斥。`source.path` 与 `--list` 的 `path` 一致使用 `/` 分隔符，可直接对账 |
 | `--fuzzy QUERY` | 对归一化相对路径做后置模糊过滤（不做目录剪枝） |
@@ -38,7 +38,7 @@ ux [FLAGS] -e 'stage(...) | stage(...)' [PATH|GLOB|- ...]
 | `--line-buffered` | 逐条 flush；长驻管道必加 |
 | `--compact` | 关闭 `-O json` 缩进 |
 
-## 7 个阶段
+## 8 个阶段
 
 | 阶段 | 接受 | 输出 |
 |---|---|---|
@@ -50,6 +50,7 @@ ux [FLAGS] -e 'stage(...) | stage(...)' [PATH|GLOB|- ...]
 | `split(PATTERN)` | Text | 按正则切分的 Text 片段，空片段丢弃、不 trim |
 | `slurp()` | 任意 | 全部输入收敛为一个 Data 数组，至多一个，跨文件全局 |
 | `captures()` | 任意 | `--path-spec` captures 对象（显式 opt-in；无 path-spec 时为 null）→ Data |
+| `check(FILTER)` | Data / Text | 断言每条记录满足 FILTER（jq 真值）；通过则原样传递，失败为 `eval(1)` |
 
 编译期做类型上界检查（`slurp() | xpath(...)` 这类组合在读取输入前报错退出 2）；运行期仍有值级类型检查。
 
@@ -86,7 +87,7 @@ ux [FLAGS] -e 'stage(...) | stage(...)' [PATH|GLOB|- ...]
 
 ## 稳定保证与当前行为
 
-跨版本稳定：stdout 只承载数据；stderr 每条诊断一行；`--quiet` 只压 warning；错误必出；0/1/2 退出码；字典序串行；`--no-stdin` 与 TTY 保护；`catch_unwind` 无条件把主线程 unwind panic 收敛为 `runtime(1)`，JSON 模式额外安装空 panic hook 保证 stderr 纯净。
+跨版本稳定：stdout 只承载数据；stderr 每条诊断一行；`--quiet` 只压**非结果影响** warning；错误必出；0/1/2 退出码；字典序串行；`--no-stdin` 与 TTY 保护；`catch_unwind` 无条件把主线程 unwind panic 收敛为 `runtime(1)`，JSON 模式额外安装空 panic hook 保证 stderr 纯净。
 
 0.4.0 行为：BrokenPipe 按 **I/O 方向**区分——**输出侧** `AppError::Io(BrokenPipe)` 退出 0 且不写诊断（正常终止）；**输入侧**读失败（含上游管道破裂）为 `runtime(1)` 诊断。`rc=0` 且 stdout 空且 stderr 空现在**只表示「真的零匹配」**，不再可能是「输入侧管道破裂被静默判成功」。
 
@@ -101,7 +102,7 @@ ux [FLAGS] -e 'stage(...) | stage(...)' [PATH|GLOB|- ...]
 | `assumed GB18030` | 编码回退 | 显式 `--encoding` |
 | `processed N file(s), 0 results` | 打开 ≥1 个文件但产物 0 条（无错误） | 这是零匹配的可见信号；复核表达式 / `-f` |
 
-`--quiet` 会隐藏这些 warning。需要区分「零匹配」与「文件被跳过」时不要加；管道输入场景不要依赖 `--quiet` + 退出码判断完整性。
+结果影响型 warning（`no input files matched` / `binary input skipped` / `incompatible` / `empty file` / `processed N file(s), 0 results`）**不受 `--quiet` 压制**，JSON 带 `"category":"result_set"`——依赖退出码时也可放心加 `--quiet`。
 
 ## 常见陷阱
 
@@ -116,4 +117,4 @@ ux [FLAGS] -e 'stage(...) | stage(...)' [PATH|GLOB|- ...]
 
 ## 能力边界
 
-不做网络访问、并发、稳定库 API、完整 jq / XPath 1.0 兼容、schema 校验、join、跨文件关联、结果排序、提取提示（hint）、captures 求值注入。库直调 `run()` 仅用于内部分层与测试，不承诺 API 稳定性。
+不做网络访问、并发、稳定库 API、完整 jq / XPath 1.0 兼容、schema 校验、join、跨文件关联、结果排序、提取提示（hint）。captures 只读元数据，需 `captures()` 阶段显式注入。库直调 `run()` 仅用于内部分层与测试，不承诺 API 稳定性。

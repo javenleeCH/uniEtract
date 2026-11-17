@@ -61,6 +61,7 @@ ux --quiet --error-format json -f jsonl -e 'jq(select(.level == "ERROR"))' .\log
 | `split(PATTERN)` | Text | 按正则切分的 Text 片段，空片段丢弃、不 trim |
 | `slurp()` | 任意 | 所有输入收敛为一个 Data 数组；至多一个，跨文件全局 |
 | `captures()` | 任意 | `--path-spec` captures 对象（显式 opt-in；无 path-spec 时为 null）→ Data |
+| `check(FILTER)` | Data / Text | 断言每条记录满足 FILTER（jq 真值）；通过则原样传递，失败为 `eval(1)` |
 
 参数字符串支持 `r"..."` / `r#"..."#` 原始字符串（任意井号数）与 `\n \r \t \\ \' \"` 六种转义。管道符只在括号深度为 0 且不在字符串内时切分，所以 jq 自身的 `.a | .b` 不会被误拆。没有「字面 `|`」转义。
 
@@ -77,7 +78,7 @@ DSL 结构由 `pest` 的 PEG 语法（`src/dsl.pest`）描述，`src/dsl.rs` 负
 - `--with-source` 包成 `{value, source:{path,line,record}}`；与 `-O text` 互斥。`source.path` 与 `--list` 的 `path` 一致使用 `/` 分隔符（Windows 上也如此），两份输出可直接对账。
 - 体积：`--max-input-size`（整文档格式）、`--max-record-size`（单行/单记录/切分片段）。`0` 表示不限。
 - 结果：`--max-results N` 在第 N+1 条时报错退出 1，立即终止且不输出残缺聚合，不静默截断。
-- 诊断：`--error-format text|json`（默认 text）控制 stderr 编码；`--quiet`（别名 `--silent`）压制 warning，错误始终输出。
+- 诊断：`--error-format text|json`（默认 text）控制 stderr 编码；`--quiet`（别名 `--silent`）压制**非结果影响**的 warning，错误始终输出。改变结果集的 warning（`no input files matched` / `binary input skipped` / `incompatible` / `empty file` / `processed ... 0 results` 等）**不受 `--quiet` 压制**，JSON 模式带 `"category":"result_set"`。
 
 ### `--path-spec`：结构化路径匹配
 
@@ -92,7 +93,7 @@ DSL 结构由 `pest` 的 PEG 语法（`src/dsl.pest`）描述，`src/dsl.rs` 负
 - 命名 captures 是**只读字符串元数据**：出现在 `--list` 与 `--with-source` 的 `source.captures` 里，默认**不参与流水线求值**，也不生成 `ts_fields` 之类派生字段。0.4.0 起可用 `captures()` 阶段显式把它们注入记录流（opt-in）。
 - 目录结尾的 spec 不会隐式追加 `**`；必须显式写出文件段，例如 `/{file:glob:*.txt}`。
 - 与位置参数 `PATH|GLOB` 互斥；可与 `--exclude`、`--fuzzy`（后置过滤）、`--no-default-ignore` 组合。段级剪枝：不匹配的中间目录根本不会被进入。
-- 发现阶段三类异常（`read_dir` 打开失败、`ReadDir` 单条目失败、`file_type` 失败）会输出 warning 而不是静默跳过；`--quiet` 可压制，因此**需要区分零匹配与「丢文件」时不要加 `--quiet`**。
+- 发现阶段三类异常（`read_dir` 打开失败、`ReadDir` 单条目失败、`file_type` 失败）会输出 warning 而不是静默跳过；它们是结果影响型告警，**不受 `--quiet` 压制**。
 - `glob` 占位不支持字符类（`[...]`，含字面 `]`），需要时改用 `{name:re:...}`；`re:` 片段禁止顶层 `|` 与不配平括号，避免悄悄逃逸捕获组、让段级剪枝静默失效。
 - captures 在 JSON 对象里按名字**字典序**输出（不是 spec 中的出现顺序）；同名捕获（含嵌套组与显式占位跨段重名）在编译期拒绝；嵌套命名组计入 32 个捕获的预算。
 - `re:` 片段里可以写嵌套命名组拆文件名字段：`{file:re:.*(?<ts>\d{8}_\d{6})_(?<seq>\d+)_hidumper\.txt}` 会产出 `file` / `ts` / `seq` 三个捕获；片段内的冒号（如 `\d{2}:\d{2}`）合法。
@@ -124,7 +125,7 @@ CLI 会被脚本、CI 与 LLM 生成的命令直接调用。下列行为是**跨
 | 关注点 | 保证 |
 |---|---|
 | stdout | 只承载数据；`-O jsonl` 每行一个紧凑 JSON，`-O json` 单个数组，`-O text` 原样文本；`--list` 输出输入清单 JSONL |
-| stderr | 每条诊断一行；`--error-format json` 时每行都是可解析的 JSON 对象；`--quiet` 压制 warning 但错误必出 |
+| stderr | 每条诊断一行；`--error-format json` 时每行都是可解析的 JSON 对象；`--quiet` 只压制**非结果影响** warning，错误必出，结果影响 warning 照出 |
 | 退出码 | `0` 成功（含零匹配）、`1` 运行期错误、`2` 参数/编译错误；`Runtime(String)` 包裹的读错误为 1。`catch_unwind` **无条件**把主线程 unwind panic 收敛为 `1` 的结构化 `runtime` 诊断；`--error-format json` 模式额外安装空 panic hook，保证 stderr 只有结构化诊断。库直调 `run()` 同样收敛，但不继承该进程级 hook，调用方需自行管理 |
 | 顺序 | 文件按归一化相对路径字典序串行处理；`--list` 顺序与实际处理顺序一致，多次调用字节级稳定 |
 | 输入 | 无路径默认读 stdin；stdin 是终端且未显式给 `-` 时返回 `Usage(2)` 并提示，避免自动化进程挂起；`--no-stdin` 可彻底禁用 |
@@ -169,7 +170,7 @@ ux --quiet --error-format json -f jsonl -e 'jq(select(.level == "ERROR"))' .\log
 | `assumed GB18030` | 编码回退 | 显式 `--encoding` 更稳 |
 | `processed N file(s), 0 results` | 打开了 ≥1 个文件（无错误）但产物 0 条 | 与「真零匹配」区分：复核表达式 / `-f`；这本身就是零匹配的信号 |
 
-`--quiet` 会隐藏这些 warning：只关心数据且依赖退出码时可加；需要区分「零匹配」与「文件被跳过」时不要加。输入侧管道破裂现在已是 `runtime(1)` 诊断（见「稳定契约」表），不再以「空 stderr + 空 stdout」的形态出现。
+`--quiet` 只隐藏**非结果影响**的 warning：像 `assumed GB18030`、`--compact only affects -O json`、`duplicate --ns` 这类。改变结果集的 warning（`no input files matched` / 跳文件 / 空文件 / 零匹配汇总）**仍会输出**，所以依赖退出码又需要知道「文件是否被跳过/是否真零匹配」时可以放心加 `--quiet`。输入侧管道破裂现在是 `runtime(1)` 诊断（见「稳定契约」表），不再以「空 stderr + 空 stdout」的形态出现。
 
 容易误判的点：
 
@@ -264,7 +265,7 @@ git push github v0.4.0                            # 触发 Release workflow
 
 ## Agent Skill
 
-随仓库提供 `ux-extract` skill（`.agents/skills/ux-extract/`），教 Agent 用 `ux` 做本地信息抽取：预检、`--list` 先定输入集、八阶段流水线组装、结构化诊断与退出码解读。`.agents/skills/` 是 [Agent Skills 开放规范](https://agentskills.io)约定的**跨客户端通用目录**：遵循规范的 Agent（Claude Code、Codex、Amp、CodeBuddy 等）都会扫描 `~/.agents/skills/`（用户级）与 `<project>/.agents/skills/`（项目级）。
+随仓库提供 `ux-extract` skill（`.agents/skills/ux-extract/`），教 Agent 用 `ux` 做本地信息抽取：预检、`--list` 先定输入集、九阶段流水线组装、结构化诊断与退出码解读。`.agents/skills/` 是 [Agent Skills 开放规范](https://agentskills.io)约定的**跨客户端通用目录**：遵循规范的 Agent（Claude Code、Codex、Amp、CodeBuddy 等）都会扫描 `~/.agents/skills/`（用户级）与 `<project>/.agents/skills/`（项目级）。
 
 ### 下载
 

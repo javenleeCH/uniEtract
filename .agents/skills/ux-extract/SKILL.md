@@ -1,6 +1,6 @@
 ---
 name: ux-extract
-description: This skill should be used when an agent needs to extract structured data from local files, directories, logs, JSON/JSONL/YAML/TOML/XML/HTML/CSV/TSV or stdin using the ux (UniExtract) CLI, or when a task would otherwise be solved with ad-hoc jq, grep, regex or Python parsing scripts. Covers composing the 8-stage pipeline, previewing inputs with --list, selecting files with --path-spec, and interpreting stable JSON diagnostics and 0/1/2 exit codes.
+description: This skill should be used when an agent needs to extract structured data from local files, directories, logs, JSON/JSONL/YAML/TOML/XML/HTML/CSV/TSV or stdin using the ux (UniExtract) CLI, or when a task would otherwise be solved with ad-hoc jq, grep, regex or Python parsing scripts. Covers composing the 9-stage pipeline, previewing inputs with --list, selecting files with --path-spec, and interpreting stable JSON diagnostics and 0/1/2 exit codes.
 ---
 
 # ux-extract
@@ -41,7 +41,7 @@ Pick stages from `references/cli-contract.md` and start from a recipe in `refere
 
 ### 4. Execute with machine-readable diagnostics
 
-Add `--error-format json` so every stderr line is a parseable object. Add `--quiet` only when suppressing warnings is acceptable (never with pipe input when completeness matters). Keep stdout and stderr separate; never merge them with `2>&1`.
+Add `--error-format json` so every stderr line is a parseable object. Add `--quiet` to silence non-result-affecting warnings (encoding fallback, duplicate `--ns`, etc.); result-affecting warnings — skipped/empty/missing inputs and zero matches — always print with `"category":"result_set"`. Keep stdout and stderr separate; never merge them with `2>&1`.
 
 ### 5. Interpret the result
 

@@ -140,16 +140,50 @@ fn json_error_format_keeps_stdout_parseable() {
 
 #[test]
 fn quiet_suppresses_warnings_but_never_errors() {
-    let dir = tempdir().unwrap();
-    let pattern = format!("{}/*.none", dir.path().to_str().unwrap());
-    let quiet = ux()
-        .args(["-e", "text()", "--quiet", &pattern])
+    // Informational warnings (not result-affecting) stay suppressed by --quiet.
+    // `--compact` with `-O text` triggers such a warning, and stdin avoids any
+    // file-open errors.
+    let suppressible = ux()
+        .args(["-e", "text()", "-O", "text", "--compact", "--quiet"])
+        .write_stdin("null")
         .assert()
         .success()
         .get_output()
         .clone();
-    assert!(quiet.stderr.is_empty());
-    assert!(quiet.stdout.is_empty());
+    assert!(
+        suppressible.stderr.is_empty(),
+        "{:?}",
+        text(&suppressible.stderr)
+    );
+
+    // Result-affecting warnings survive --quiet: an agent must still see that
+    // zero inputs matched, even when it asked to silence warnings.
+    let dir = tempdir().unwrap();
+    let pattern = format!("{}/*.none", dir.path().to_str().unwrap());
+    let result_set = ux()
+        .args([
+            "-e",
+            "text()",
+            "--quiet",
+            "--error-format",
+            "json",
+            &pattern,
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    assert!(result_set.stdout.is_empty());
+    let diagnostics = json_lines(&result_set.stderr);
+    assert_eq!(diagnostics.len(), 1, "{:?}", text(&result_set.stderr));
+    assert_eq!(diagnostics[0]["code"], "warning");
+    assert_eq!(diagnostics[0]["category"], "result_set");
+    assert!(
+        diagnostics[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("no input files matched")
+    );
 
     let failure = ux()
         .args([
@@ -481,7 +515,7 @@ fn zero_matches_is_success_with_clean_stderr() {
 }
 
 #[test]
-fn file_zero_matches_emits_a_suppressible_summary() {
+fn file_zero_matches_emits_a_result_affecting_summary() {
     // A genuine zero match over *file* input is the highest-frequency silent
     // failure for agents; it must be observable on stderr (still exit 0).
     let dir = tempdir().unwrap();
@@ -508,7 +542,7 @@ fn file_zero_matches_emits_a_suppressible_summary() {
         text(&output.stderr)
     );
 
-    // --quiet suppresses the summary (still exit 0, still data-only stdout).
+    // The summary is result-affecting, so it survives --quiet (still exit 0).
     let quiet = ux()
         .args([
             "-f",
@@ -516,6 +550,8 @@ fn file_zero_matches_emits_a_suppressible_summary() {
             "-O",
             "text",
             "--quiet",
+            "--error-format",
+            "json",
             "-e",
             r#"re(r"ZZZ")"#,
             dir.path().to_str().unwrap(),
@@ -525,7 +561,15 @@ fn file_zero_matches_emits_a_suppressible_summary() {
         .get_output()
         .clone();
     assert!(quiet.stdout.is_empty());
-    assert!(quiet.stderr.is_empty(), "{:?}", text(&quiet.stderr));
+    let diagnostics = json_lines(&quiet.stderr);
+    assert_eq!(diagnostics.len(), 1, "{:?}", text(&quiet.stderr));
+    assert_eq!(diagnostics[0]["category"], "result_set");
+    assert!(
+        diagnostics[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("0 results")
+    );
 }
 
 #[test]

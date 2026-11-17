@@ -58,6 +58,7 @@ pub enum CompiledStage {
     Slurp,
     Split(SplitStage),
     Captures,
+    Check(JqStage),
 }
 
 impl CompiledStage {
@@ -75,6 +76,7 @@ impl CompiledStage {
             StageSpec::Slurp => Ok(Self::Slurp),
             StageSpec::Split(source) => Ok(Self::Split(SplitStage::compile(&source, limits)?)),
             StageSpec::Captures => Ok(Self::Captures),
+            StageSpec::Check(source) => Ok(Self::Check(JqStage::compile(&source)?)),
         }
     }
 
@@ -85,7 +87,7 @@ impl CompiledStage {
     /// Types this stage can accept. A subset of the actual runtime check.
     pub fn input_types(&self) -> TypeSet {
         match self {
-            Self::Jq(_) => TypeSet::DATA.union(TypeSet::TEXT),
+            Self::Jq(_) | Self::Check(_) => TypeSet::DATA.union(TypeSet::TEXT),
             Self::XPath(_) | Self::Attr(_) => TypeSet::NODE,
             Self::Regex(_) | Self::Split(_) => TypeSet::TEXT,
             Self::Text | Self::Slurp | Self::Captures => TypeSet::ALL,
@@ -95,7 +97,7 @@ impl CompiledStage {
     /// Upper bound on the types this stage may produce.
     pub fn output_types(&self) -> TypeSet {
         match self {
-            Self::Jq(_) | Self::Regex(_) => TypeSet::DATA.union(TypeSet::TEXT),
+            Self::Jq(_) | Self::Regex(_) | Self::Check(_) => TypeSet::DATA.union(TypeSet::TEXT),
             Self::XPath(_) => TypeSet::ALL,
             Self::Text | Self::Attr(_) | Self::Split(_) => TypeSet::TEXT,
             Self::Slurp | Self::Captures => TypeSet::DATA,
@@ -112,6 +114,7 @@ impl CompiledStage {
             Self::Slurp => "slurp".to_owned(),
             Self::Split(_) => "split".to_owned(),
             Self::Captures => "captures".to_owned(),
+            Self::Check(_) => "check".to_owned(),
         }
     }
 
@@ -149,6 +152,25 @@ impl CompiledStage {
                     .map(|captures| (**captures).clone())
                     .unwrap_or(serde_json::Value::Null);
                 Ok(vec![Value::Data(captures)])
+            }
+            Self::Check(stage) => {
+                // `check(FILTER)` asserts each record satisfies FILTER (jq
+                // truthiness: at least one non-false, non-null output), then
+                // passes the record through unchanged.
+                let produced = stage.evaluate(value.clone())?;
+                let passed = produced.iter().any(|value| {
+                    !matches!(
+                        value,
+                        Value::Data(serde_json::Value::Bool(false) | serde_json::Value::Null)
+                    )
+                });
+                if !passed {
+                    return Err(format!(
+                        "check failed: filter produced no truthy result for {}",
+                        value.string_value()
+                    ));
+                }
+                Ok(vec![value])
             }
         }
     }
