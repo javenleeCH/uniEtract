@@ -41,6 +41,14 @@ pub struct Compiled {
     segments: Vec<Segment>,
 }
 
+impl Compiled {
+    /// Number of compiled segments; used by the fuzz entry point to keep a
+    /// meaningful return shape.
+    pub fn segment_count(&self) -> usize {
+        self.segments.len()
+    }
+}
+
 fn usage(message: impl Into<String>) -> AppError {
     AppError::Usage(format!("invalid --path-spec: {}", message.into()))
 }
@@ -458,7 +466,16 @@ pub fn discover(
         }
         found.push((path, relative, Arc::new(JsonValue::Object(object))));
     }
-    found.sort_by(|left, right| left.1.cmp(&right.1));
+    // Default lexicographic path order is the stable contract; --sort-by
+    // overrides it using a named capture (numeric or string).
+    if let Some(sort_by) = cli.sort_by.as_deref().and_then(crate::cli::parse_sort_by) {
+        found.sort_by(|left, right| {
+            compare_capture(&left.2, &right.2, &sort_by.capture, sort_by.numeric)
+                .unwrap_or_else(|| left.1.cmp(&right.1))
+        });
+    } else {
+        found.sort_by(|left, right| left.1.cmp(&right.1));
+    }
     if found.is_empty() {
         reporter.warn_result_affecting("no input files matched");
     }
@@ -466,6 +483,25 @@ pub fn discover(
         .into_iter()
         .map(|(path, _, captures)| Input::Matched { path, captures })
         .collect())
+}
+
+/// Compare two capture objects by a named key. Returns `None` when the key is
+/// absent from either side (fall back to path order). With `numeric`, both
+/// sides parsing as i64 yields numeric order; otherwise string order.
+fn compare_capture(
+    left: &JsonValue,
+    right: &JsonValue,
+    key: &str,
+    numeric: bool,
+) -> Option<std::cmp::Ordering> {
+    let a = left.get(key)?.as_str()?;
+    let b = right.get(key)?.as_str()?;
+    if numeric {
+        if let (Ok(an), Ok(bn)) = (a.parse::<i64>(), b.parse::<i64>()) {
+            return Some(an.cmp(&bn));
+        }
+    }
+    Some(a.cmp(b))
 }
 
 #[cfg(test)]

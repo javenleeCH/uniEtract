@@ -63,7 +63,7 @@ data/{ts:re:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}}_SRRG/{svc:glob:*}/txt/{f:glob:*
 - 中间段要求 `is_dir()`；末段要求 `is_file()`。符号链接文件按 `file_type()` 判定后跳过。
 - 目录段由 `DEFAULT_IGNORED_DIRS` 过滤（`--no-default-ignore` 可关闭）；`--exclude` glob 与 `--fuzzy` 对归一化相对路径生效。
 - 去重按 `canonicalize()` 结果的集合；非 UTF-8 文件名经 `to_string_lossy()` 参与匹配。
-- 最终文件按归一化相对路径字典序排序，与 `--list` 输出顺序、实际处理顺序一致。
+- 最终文件默认按归一化相对路径字典序排序，与 `--list` 输出顺序、实际处理顺序一致；`--sort-by CAPTURE[:num]` 可改为按命名捕获排序（数值/字符串）。
 - frontier 按层展开而不设节点数上限：扇出由 spec 片段的宽窄决定，调用方用窄片段（具体目录名、受约束的 `re:`）控制规模。
 
 ## 5. captures

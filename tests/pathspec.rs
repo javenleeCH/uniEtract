@@ -227,3 +227,40 @@ fn calendar_and_clock_validity_are_delegated_to_the_regex() {
         .success()
         .stdout(predicate::str::contains("2026-02-29T99-99-99_SRRG"));
 }
+
+#[test]
+fn sort_by_capture_numeric_fixes_dictionary_order() {
+    let dir = tempdir().unwrap();
+    // mins=2 and mins=10: lexicographic order is 10 < 2, numeric order is 2 < 10.
+    let spec =
+        "data/{ts:glob:*}_SRRG/render_service/{mins:re:\\d+}min/hidumper/txt/{file:glob:*.txt}";
+    for (mins, file) in [("10", "a.txt"), ("2", "b.txt")] {
+        write(
+            dir.path(),
+            &format!("data/2026-11-14T00-00-00_SRRG/render_service/{mins}min/hidumper/txt/{file}"),
+            "NativeHeap pss: 1 kB\n",
+        );
+    }
+
+    // Default: lexicographic → 10min before 2min.
+    let default = ux()
+        .current_dir(dir.path())
+        .args(["--path-spec", spec, "--list"])
+        .output()
+        .unwrap();
+    let default_stdout = String::from_utf8_lossy(&default.stdout);
+    let pos10 = default_stdout.find("10min").unwrap();
+    let pos2 = default_stdout.find("2min").unwrap();
+    assert!(pos10 < pos2, "lexicographic default: {default_stdout}");
+
+    // --sort-by mins:num → 2min before 10min.
+    let sorted = ux()
+        .current_dir(dir.path())
+        .args(["--path-spec", spec, "--list", "--sort-by", "mins:num"])
+        .output()
+        .unwrap();
+    let sorted_stdout = String::from_utf8_lossy(&sorted.stdout);
+    let pos10 = sorted_stdout.find("10min").unwrap();
+    let pos2 = sorted_stdout.find("2min").unwrap();
+    assert!(pos2 < pos10, "numeric sort: {sorted_stdout}");
+}

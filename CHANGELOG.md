@@ -16,6 +16,9 @@
 - **新增（`--list` format 提示）**：`--list` 清单每行追加 `"format"` 字段（仅当格式可从 `-f` 或扩展名确定时）。这是**内容无关**的扩展名提示——`--list` 仍不打开文件；未知扩展名/无扩展名文件省略该字段而不猜测（无扩展名 JSONL 的误判仍需显式 `-f jsonl`）。字段只追加、不重命名，符合稳定契约。
 - **新增（captures 显式注入）**：新增第 8 个阶段 `captures()`——把当前条目的 `--path-spec` captures 对象显式注入记录流（opt-in），默认 captures 仍是只读元数据、不隐式参与求值。不用 `--path-spec` 时 `captures()` 产出 `null`。接受任意输入、产出 `Data`。配合 `--with-source` 的 `source.captures` 可让 Agent 在流水线内直接取 `{ts, mins, file}` 等命名捕获。
 - **新增（`check(FILTER)` 轻量 schema 断言）**：新增第 9 个阶段 `check(FILTER)`——用 jq 真值逐条断言记录满足 FILTER，通过则**原样传递**记录（不改变记录流），失败为 `eval(1)`。这填补了 Agent/CI「抽得可信」的最后一公里：单条记录的局部 schema 校验（如 `check(.n > 0)`），不涉及跨文件 join/关系运算。
+- **新增（`--sort-by CAPTURE[:num]`）**：`--path-spec` 匹配结果可按命名捕获排序（如 `--sort-by mins:num`），修复时间戳/序号目录里 `10min` 排在 `2min` 前、`seq=10` 排在 `seq=9` 前的字典序错序。`CAPTURE` 为字符串比较，`CAPTURE:num` 在两侧均可解析为整数时用数值比较（否则回退字符串）。仅在 `--path-spec` 下可用，并覆盖默认的字典序路径顺序。
+- **工程（skill 分发一致性门禁）**：新增 `.github/scripts/check_skill_zip.py`，解包 `dist/ux-extract.zip` 与 `.agents/skills/ux-extract/` 逐文件 sha256 比对（名称集合 + 内容），漂移即失败。接入 `ci.yml` verify job，杜绝「改了 SKILL/references 却忘重打包」把旧 skill 随新版发布。本轮已按当前源重打包 `dist/ux-extract.zip`。
+- **工程（pathspec fuzz）**：新增 `fuzz/fuzz_targets/pathspec_compile.rs`，fuzz `pathspec::compile` 的手写词法器/`re:` 片段校验/glob 翻译面（此前仅 `dsl_split` 一个 target）。库暴露 `parse_pathspec` 作为 panic-free 入口。
 - **收紧（`--quiet` 语义）**：`--quiet` 现在只压制**非结果影响**的 warning（如 `assumed GB18030`、`--compact only affects -O json`、`duplicate --ns`）。改变结果集的 warning——`no input files matched`、`binary input skipped`、`incompatible`、`empty file`、`processed N file(s), 0 results`、发现遍历异常——**不再受 `--quiet` 压制**，`--error-format json` 下额外带 `"category":"result_set"`。这样依赖退出码的 Agent 也能放心加 `--quiet`，而不会把「文件被跳过/真零匹配」误判为「静默成功」。
 - **新增（`--path-regex` / `--root`）**：输入选择新增两个可选入口，与 `--path-spec` **并存不替换**。`--path-regex REGEX` 用正则对归一化相对路径做后置过滤（可重复、全匹配 AND；不剪枝遍历）；`--root DIR` 把相对位置参数重新锚定到 DIR，绝对路径不受影响。二者均与 `--exclude` / `--fuzzy` 组合。选型决策表见 README「输入选择」段。
 
@@ -53,7 +56,7 @@
 - `tests/cli.rs` 新增 `--help` 的 PATH SPEC / ROADMAP 文案正向回归断言。
 - 修复 GitHub CI：Rust 1.88 clippy 的 `uninlined_format_args` 会让 `tests/pathspec.rs` / `tests/pathspec_scenario.rs` 的 `assert_eq!` 在 `-D warnings` 下失败；两处改用内联格式参数。README 补上 `cargo +1.88.0 ...` 的本地同工具链复现命令。
 - 新增 tag 驱动的发布流水线 `.github/workflows/release.yml`：`v*` tag 触发四个平台（Linux x86_64、Windows x86_64、macOS x86_64 / arm64）的 `--locked` release 构建与打包，由 `check_release_version.py` 统一校验版本、`package_release.py` 生成压缩包与 `SHA256SUMS`，发布 job 校验全部产物后写入 GitHub Release；CI verify 增加版本一致性步骤。
-- 当前 Rust 测试共 **177 项**（92 单测 + 23 Agent 契约 + 37 CLI + 3 兼容 + 6 库直调 + 8 pathspec + 8 场景），在 Rust 1.88 下全部通过。
+- 当前 Rust 测试共 **178 项**（92 单测 + 23 Agent 契约 + 37 CLI + 3 兼容 + 6 库直调 + 9 pathspec + 8 场景），在 Rust 1.88 下全部通过。
 
 ### 0.4.0 时间表（已定稿）
 

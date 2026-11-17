@@ -61,6 +61,13 @@ pub struct Cli {
     #[arg(long = "root", value_name = "DIR")]
     pub root: Option<String>,
 
+    /// Sort --path-spec inputs by a named capture before processing, overriding
+    /// the default lexicographic path order. Value is `CAPTURE` (compare the
+    /// capture as strings) or `CAPTURE:num` (compare numerically when both
+    /// parse as integers, falling back to string). Requires --path-spec.
+    #[arg(long = "sort-by", value_name = "CAPTURE[:num]", requires = "path_spec")]
+    pub sort_by: Option<String>,
+
     /// Maximum directory recursion depth (0 = direct children only)
     #[arg(long, value_name = "N")]
     pub max_depth: Option<usize>,
@@ -179,6 +186,13 @@ impl Cli {
                 return Err(AppError::Usage(format!(
                     "--root `{}` is not a directory",
                     root.display()
+                )));
+            }
+        }
+        if let Some(sort_by) = &self.sort_by {
+            if parse_sort_by(sort_by).is_none() {
+                return Err(AppError::Usage(format!(
+                    "--sort-by `{sort_by}` must be CAPTURE or CAPTURE:num"
                 )));
             }
         }
@@ -302,6 +316,29 @@ pub enum CompletionShell {
     #[value(name = "powershell")]
     PowerShell,
     Elvish,
+}
+
+pub fn parse_sort_by(value: &str) -> Option<SortBy> {
+    let (capture, numeric) = match value.split_once(':') {
+        Some((capture, "num")) => (capture, true),
+        Some(_) => return None,
+        None => (value, false),
+    };
+    if capture.is_empty() {
+        return None;
+    }
+    Some(SortBy {
+        capture: capture.to_owned(),
+        numeric,
+    })
+}
+
+/// Parsed `--sort-by` spec: compare a named `--path-spec` capture, numerically
+/// when `numeric` (falling back to string when both sides are not integers).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SortBy {
+    pub capture: String,
+    pub numeric: bool,
 }
 
 pub fn parse_size(value: &str) -> Result<u64, String> {

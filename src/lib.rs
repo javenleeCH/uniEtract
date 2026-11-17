@@ -313,3 +313,11 @@ pub fn parse_pipeline(source: &str) -> Result<usize, String> {
         .map(|stages| stages.len())
         .map_err(|error| error.to_string())
 }
+
+/// Public, panic-free entry point used by the path-spec fuzz target.
+/// Returns the number of compiled segments; malformed input is a normal `Err`.
+pub fn parse_pathspec(spec: &str) -> Result<usize, String> {
+    pathspec::compile(spec)
+        .map(|compiled| compiled.segment_count())
+        .map_err(|error| error.to_string())
+}

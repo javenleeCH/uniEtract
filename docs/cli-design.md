@@ -20,7 +20,7 @@
 | 完整 jq / XPath 1.0 兼容 | 只保证实测过的函数、轴与语法 |
 | schema 校验、join、跨文件关联 | 单记录流模型，不做关系运算 |
 | captures 参与求值 | captures 是来源元数据，不是记录字段 |
-| 结果排序 / 提取提示（hint） | 排序由输入发现顺序决定，提示会引入隐式行为 |
+| 结果排序 / 提取提示（hint） | 默认排序由输入发现顺序决定；`--sort-by` 可按 captures 显式排序；提示会引入隐式行为 |
 | 跨段通配与自动 `**` 追加 | 路径匹配必须显式，避免意外遍历 |
 
 ## 2. 版本与技术基线
@@ -133,7 +133,7 @@ main → Cli::parse → run(cli, stdin, stdout, stderr)
 
 ## 7. 测试与门禁
 
-Rust 测试共 **177 项**：
+Rust 测试共 **178 项**：
 
 | 位置 | 项数 | 覆盖 |
 |---|---|---|
@@ -142,14 +142,14 @@ Rust 测试共 **177 项**：
 | `tests/cli.rs` | 37 | 端到端管道、格式、错误码、编码、path-regex/root、check()、`--help` 文案 |
 | `tests/jq_compat.rs` | 3 | jq 兼容性夹具 |
 | `tests/lib_run.rs` | 6 | 库直调 `run()`：stdout 纯净、BrokenPipe 方向区分、usage、panic 收敛 |
-| `tests/pathspec.rs` | 8 | `--path-spec` CLI 端到端 + `captures()` 注入 |
+| `tests/pathspec.rs` | 9 | `--path-spec` CLI 端到端 + `captures()` 注入 + `--sort-by` |
 | `tests/pathspec_scenario.rs` | 8 | NativeHeap 12 夹具的 8 项场景断言 |
 
 工程门禁：
 
 - `sample/smoke.py` 45 条冒烟；`sample/export_cases.py --check` 保证 `sample/CASES.md` 与用例同步。
 - `.github/scripts/check_contract_docs.py`：断言必需文件存在、扫描过期契约文案、校验 12 个 NativeHeap 夹具。
-- `.github/scripts/check_test_count.py`：以 `cargo test -- --list` 的汇总行统计测试数并锚定 177。
+- `.github/scripts/check_test_count.py`：以 `cargo test -- --list` 的汇总行统计测试数并锚定 178。
 - `.github/scripts/check_fuzz_manifest.py`：`cargo metadata --manifest-path fuzz/Cargo.toml --locked --format-version 1`。
 - `.github/workflows/ci.yml`：双 OS `verify`（fmt / clippy `-D warnings` / test / release / smoke / 三个 Python 门禁）与 Rust 1.88 `msrv` job；工具链固定为 1.88，避免 `-D warnings` 被新 lint 破坏；无 `python -c` 内联，bash 与 pwsh 行为一致。
 

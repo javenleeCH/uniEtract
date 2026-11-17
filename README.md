@@ -92,7 +92,7 @@ DSL 结构由 `pest` 的 PEG 语法（`src/dsl.pest`）描述，`src/dsl.rs` 负
 - 0.3.1 起**不接受** `time:` / `lit:` / 简写 `{%Y-%m-%d}` / `{\d+}`，也**不做日历或时钟合法性校验**；有效性由调用方写进 `re:` 片段。非法 spec 在打开任何目录之前返回 `Usage(2)`。
 - 命名 captures 是**只读字符串元数据**：出现在 `--list` 与 `--with-source` 的 `source.captures` 里，默认**不参与流水线求值**，也不生成 `ts_fields` 之类派生字段。0.4.0 起可用 `captures()` 阶段显式把它们注入记录流（opt-in）。
 - 目录结尾的 spec 不会隐式追加 `**`；必须显式写出文件段，例如 `/{file:glob:*.txt}`。
-- 与位置参数 `PATH|GLOB` 互斥；可与 `--exclude`、`--fuzzy`（后置过滤）、`--no-default-ignore` 组合。段级剪枝：不匹配的中间目录根本不会被进入。
+- 与位置参数 `PATH|GLOB` 互斥；可与 `--exclude`、`--fuzzy`（后置过滤）、`--no-default-ignore`、`--sort-by CAPTURE[:num]` 组合。段级剪枝：不匹配的中间目录根本不会被进入。`--sort-by` 按命名捕获排序——`CAPTURE` 字符串比较，`CAPTURE:num` 数值比较（两侧均可解析为整数时，否则回退字符串）；修复时间戳/序号目录的字典序错序（`10min` 排在 `2min` 前）。
 - 发现阶段三类异常（`read_dir` 打开失败、`ReadDir` 单条目失败、`file_type` 失败）会输出 warning 而不是静默跳过；它们是结果影响型告警，**不受 `--quiet` 压制**。
 - `glob` 占位不支持字符类（`[...]`，含字面 `]`），需要时改用 `{name:re:...}`；`re:` 片段禁止顶层 `|` 与不配平括号，避免悄悄逃逸捕获组、让段级剪枝静默失效。
 - captures 在 JSON 对象里按名字**字典序**输出（不是 spec 中的出现顺序）；同名捕获（含嵌套组与显式占位跨段重名）在编译期拒绝；嵌套命名组计入 32 个捕获的预算。
@@ -247,7 +247,7 @@ git push github v0.4.0                            # 触发 Release workflow
 - HTML 容错树会插入隐式 `<tbody>` 并折叠标签/属性名为小写，表达式需按实际 DOM 写。
 - Windows Git Bash / MSYS2 会把 `-e` 里的 `//a`、`//b:book` 当 UNC 路径改写，导致 XPath 静默零匹配。执行前设 `MSYS2_ARG_CONV_EXCL='*'`，或改用 PowerShell。这是 shell 的参数转换，不是 `ux` 的解析问题。
 - DSL 括号嵌套最多 128 层，超限时报错退出 2（不崩溃、不静默截断）；限制只针对嵌套深度，不影响长正则或长 jq filter。
-- `--path-spec` 只做段级结构匹配：不做跨段通配、不做基于 captures 的排序，也不提供 `--sort` / `--max-files` 或提取提示（hint）。`re:` 片段内嵌套命名组拆文件名字段自 0.4.0 起可用（见上文）。manpage 未随发行提供，可用 `--help` 与 `--completions` 替代。
+- `--path-spec` 只做段级结构匹配：不做跨段通配，也不提供 `--max-files` 或提取提示（hint）；按 captures 排序用 `--sort-by CAPTURE[:num]`（见上文）。`re:` 片段内嵌套命名组拆文件名字段自 0.4.0 起可用（见上文）。manpage 未随发行提供，可用 `--help` 与 `--completions` 替代。
 
 完整契约与 ADR 见 `docs/cli-design.md`；路径匹配的段级剪枝与夹具证据见 `docs/path-spec-design.md`；变更记录与版本路线见 `CHANGELOG.md`。
 

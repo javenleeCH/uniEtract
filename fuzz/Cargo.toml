@@ -17,6 +17,12 @@ path = "fuzz_targets/dsl_split.rs"
 test = false
 doc = false
 
+[[bin]]
+name = "pathspec_compile"
+path = "fuzz_targets/pathspec_compile.rs"
+test = false
+doc = false
+
 # Keep the fuzz crate out of the main workspace so `cargo test` never needs
 # libfuzzer-sys or a nightly toolchain.
 [workspace]

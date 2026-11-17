@@ -29,6 +29,7 @@ REQUIRED = DOCS + [
     ".github/scripts/check_test_count.py",
     ".github/scripts/check_fuzz_manifest.py",
     ".github/scripts/check_release_version.py",
+    ".github/scripts/check_skill_zip.py",
     ".github/scripts/package_release.py",
     "tests/lib_run.rs",
     "tests/pathspec.rs",
