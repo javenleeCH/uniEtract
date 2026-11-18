@@ -386,7 +386,7 @@ def run(args):
             "fetched": {"issues": len(issues), "discussions": len(discussions)},
             "marked": marked,
         }
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        print(json.dumps(payload, ensure_ascii=True, indent=2))
     else:
         print(render_text(
             repo, state_path, items, issues, discussions,

@@ -392,7 +392,7 @@ def cmd_report(args):
         result["path"] = str(path)
 
     if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(json.dumps(result, ensure_ascii=True, indent=2))
     elif result["submitted"]:
         print(f"submitted {result['channel']}: {result['url']}")
     else:
@@ -437,7 +437,7 @@ def cmd_check(args):
             result["discussions"] = False
     except (FeedbackError, OSError, subprocess.TimeoutExpired) as exc:
         result["error"] = str(exc)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print(json.dumps(result, ensure_ascii=True, indent=2))
     return 0 if all((result["gh"], result["repo_reachable"], result["discussions"], result["label"])) else 3
 
 
@@ -478,7 +478,7 @@ def cmd_search(args):
                     })
         except (FeedbackError, OSError, subprocess.TimeoutExpired):
             pass
-    print(json.dumps({"query": query, "matches": matches}, ensure_ascii=False, indent=2))
+    print(json.dumps({"query": query, "matches": matches}, ensure_ascii=True, indent=2))
     return 0
 
 
