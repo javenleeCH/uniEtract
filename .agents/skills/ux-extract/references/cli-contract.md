@@ -37,7 +37,7 @@ ux [FLAGS] -e 'stage(...) | stage(...)' [PATH|GLOB|- ...]
 | `--force-text` | 绕过二进制检测 |
 | `--max-input-size` | 整文档上限，默认 256MiB，`0` 不限 |
 | `--max-record-size` | 单行/记录/切分片段上限，默认 8MiB |
-| `--max-results N` | 第 N+1 条时报错退出 1，立即停止 |
+| `--max-results N` | 第 N+1 条**结果**时报错退出 1，立即停止。注意：它限制的是输出端记录数，不是流入 `slurp()` 的输入数——`slurp()` 会先吃进全部输入再产出 1 条聚合结果，因此 `--max-results` 无法截断 slurp 的输入，只作用于聚合后（或 slurp 后各阶段展开）的输出记录 |
 | `--line-buffered` | 逐条 flush；长驻管道必加 |
 | `--compact` | 关闭 `-O json` 缩进 |
 

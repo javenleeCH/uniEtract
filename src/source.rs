@@ -41,7 +41,7 @@ impl<'reader> InputSource<'reader> {
     ) -> Result<Opened<'reader>, AppError> {
         let label = path
             .as_ref()
-            .map(|path| path.display().to_string())
+            .map(|path| crate::model::slash_normalize(path))
             .unwrap_or_else(|| "<stdin>".to_owned());
         // fill_buf never waits for a full buffer, so interactive stdin stays streamable.
         // An input-side read failure (including a broken pipe from a closed upstream)

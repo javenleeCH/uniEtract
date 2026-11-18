@@ -88,7 +88,7 @@ fn run_inner(
                 Input::File(path) => {
                     let mut entry = json!({
                         "type": "file",
-                        "path": path.to_string_lossy().replace('\\', "/")
+                        "path": model::slash_normalize(&path)
                     });
                     add_format_hint(&mut entry, cli, &path);
                     entry
@@ -96,7 +96,7 @@ fn run_inner(
                 Input::Matched { path, captures } => {
                     let mut entry = json!({
                         "type": "file",
-                        "path": path.to_string_lossy().replace('\\', "/"),
+                        "path": model::slash_normalize(&path),
                         "captures": (*captures).clone()
                     });
                     add_format_hint(&mut entry, cli, &path);
@@ -229,10 +229,9 @@ fn run_inner(
         if cli.skip_incompatible && !pipeline.accepts_source(source.format) {
             reporter.warn_result_affecting(&format!(
                 "skipping {}: source type is incompatible with the first pipeline stage",
-                source
-                    .path
-                    .as_ref()
-                    .map_or("<stdin>".to_owned(), |path| path.display().to_string())
+                source.path.as_ref().map_or("<stdin>".to_owned(), |path| {
+                    crate::model::slash_normalize(path)
+                })
             ));
             continue;
         }

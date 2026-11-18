@@ -110,6 +110,14 @@ impl Value<'_> {
     }
 }
 
+/// Normalize a path to forward slashes for stable, cross-platform output.
+/// `--list`, `source.path`, the eval diagnostic `path`, and the stderr warning
+/// text must all agree (Windows `\` -> `/`) so an Agent can reconcile data and
+/// human-readable diagnostics without a second implementation.
+pub fn slash_normalize(path: &std::path::Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
 pub fn source_json(origin: &Origin) -> JsonValue {
     let mut source = Map::new();
     source.insert(
@@ -120,7 +128,7 @@ pub fn source_json(origin: &Origin) -> JsonValue {
             // `--list` (lib.rs) emits forward slashes; `source.path` must join
             // with it. Windows PathBufs would otherwise serialize with `\`,
             // and cross-referencing the two outputs fails wholesale.
-            .map(|path| JsonValue::String(path.to_string_lossy().replace('\\', "/")))
+            .map(|path| JsonValue::String(slash_normalize(path)))
             .unwrap_or(JsonValue::Null),
     );
     source.insert(
@@ -154,5 +162,15 @@ mod tests {
         );
         let json = source_json(&origin);
         assert_eq!(json["path"].as_str(), Some("D:/OH/group/case/dump.txt"));
+    }
+
+    #[test]
+    fn slash_normalize_converts_windows_separators() {
+        assert_eq!(
+            slash_normalize(std::path::Path::new(r"D:\OH\group\dump.txt")),
+            "D:/OH/group/dump.txt"
+        );
+        // Forward slashes and no-slashes are left untouched.
+        assert_eq!(slash_normalize(std::path::Path::new("a/b.txt")), "a/b.txt");
     }
 }

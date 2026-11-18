@@ -56,7 +56,7 @@
 - `tests/cli.rs` 新增 `--help` 的 PATH SPEC / ROADMAP 文案正向回归断言。
 - 修复 GitHub CI：Rust 1.88 clippy 的 `uninlined_format_args` 会让 `tests/pathspec.rs` / `tests/pathspec_scenario.rs` 的 `assert_eq!` 在 `-D warnings` 下失败；两处改用内联格式参数。README 补上 `cargo +1.88.0 ...` 的本地同工具链复现命令。
 - 新增 tag 驱动的发布流水线 `.github/workflows/release.yml`：`v*` tag 触发四个平台（Linux x86_64、Windows x86_64、macOS x86_64 / arm64）的 `--locked` release 构建与打包，由 `check_release_version.py` 统一校验版本、`package_release.py` 生成压缩包与 `SHA256SUMS`，发布 job 校验全部产物后写入 GitHub Release；CI verify 增加版本一致性步骤。
-- 当前 Rust 测试共 **178 项**（92 单测 + 23 Agent 契约 + 37 CLI + 3 兼容 + 6 库直调 + 9 pathspec + 8 场景），在 Rust 1.88 下全部通过。
+- 当前 Rust 测试共 **179 项**（93 单测 + 23 Agent 契约 + 37 CLI + 3 兼容 + 6 库直调 + 9 pathspec + 8 场景），在 Rust 1.88 下全部通过。
 
 ### 0.4.0 时间表（已定稿）
 

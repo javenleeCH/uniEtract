@@ -114,7 +114,7 @@ impl AppError {
                     // `--list` (lib.rs) and `source.path` (model.rs) both emit
                     // forward slashes; the eval diagnostic `path` must join them
                     // so an Agent can reconcile all three outputs on Windows.
-                    .map(|path| JsonValue::String(path.to_string_lossy().replace('\\', "/")))
+                    .map(|path| JsonValue::String(crate::model::slash_normalize(path)))
                     .unwrap_or(JsonValue::Null),
             );
             object.insert(

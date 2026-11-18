@@ -216,7 +216,7 @@ fn walk_directory(
             Err(error) => {
                 let location = error
                     .path()
-                    .map(|path| path.display().to_string())
+                    .map(crate::model::slash_normalize)
                     .unwrap_or_else(|| "<unknown>".to_owned());
                 let message = format!("cannot traverse `{location}`: {error}");
                 if cli.strict {

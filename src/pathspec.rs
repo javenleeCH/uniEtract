@@ -357,7 +357,10 @@ fn warn_io(
     error: &std::io::Error,
     reporter: &mut Reporter<'_>,
 ) {
-    reporter.warn_result_affecting(&format!("kind={kind} path={}: {error}", path.display()));
+    reporter.warn_result_affecting(&format!(
+        "kind={kind} path={}: {error}",
+        crate::model::slash_normalize(path)
+    ));
 }
 
 /// Segment-level traversal: an unmatched directory is never entered (§5.1).

@@ -63,6 +63,10 @@ ux --quiet --error-format json -f jsonl -e 'jq(select(.level == "ERROR"))' .\log
 | `captures()` | 任意 | `--path-spec` captures 对象（显式 opt-in；无 path-spec 时为 null）→ Data |
 | `check(FILTER)` | Data / Text | 断言每条记录满足 FILTER（jq 真值）；通过则原样传递，失败为 `eval(1)` |
 
+`captures()` 是**替换**而非**合流**：它丢弃上游记录内容，只输出 captures 对象（你不用 `--path-spec` 时为 `null`，仍在流中占位）。想把「抽取结果 + captures 字段」拼成一条扁平记录，当前需 `--with-source` 输出 `{value, source:{captures,...}}` 后由外部 jq 关联（跨文件/跨记录 join 属能力边界，见「已知限制」）。
+
+`re(PATTERN)` 有捕获组时，每条匹配产出的对象同时含 `"0"`（完整匹配）、`"1"`/`"2"`…（按序捕获组）与命名键（如 `"pss"`）。多个嵌套/交替捕获组时 `"1"` 指向**最左的第一个分组的匹配**，易读错；按命名键取值更稳。
+
 参数字符串支持 `r"..."` / `r#"..."#` 原始字符串（任意井号数）与 `\n \r \t \\ \' \"` 六种转义。管道符只在括号深度为 0 且不在字符串内时切分，所以 jq 自身的 `.a | .b` 不会被误拆。没有「字面 `|`」转义。
 
 DSL 结构由 `pest` 的 PEG 语法（`src/dsl.pest`）描述，`src/dsl.rs` 负责阶段名与字面量解码；阶段名以 Rust 的 `StageSpec` 为唯一事实来源。
@@ -117,6 +121,8 @@ ux --path-spec 'data/{ts:re:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}}_SRRG/render_ser
 ```
 
 退出码：`0` 成功（含零匹配）、`1` 输入/解析/求值/输出错误、`2` 参数或编译错误。判定按 **I/O 方向**而非错误变体：**输出侧** `AppError::Io(BrokenPipe)`（例如 `| head` 提前关闭）视为正常终止并退出 0（不写诊断）；**输入侧**读失败——含上游管道破裂——一律 `runtime(1)` 并输出诊断。0.4.0 起输入侧不再被静默判成功。详细字段见下节。
+
+注意两种「没文件」的退出码**不同**：`--path-spec` 零匹配是「有效输入但什么都没命中」→ `rc=0` + `processed N file(s), 0 results` warning；而位置参数给了**不存在的路径**是输入错误 → `rc=1` `runtime`。脚本按退出码分支时需区分「spec 没命中」与「路径打错了」。
 
 ## 面向开发者与 Agent 的稳定契约
 
@@ -176,7 +182,8 @@ ux --quiet --error-format json -f jsonl -e 'jq(select(.level == "ERROR"))' .\log
 
 - `--help` / `--version` / `--completions` 的 stdout 是给人或 shell 看的，不是数据。
 - `-O json` 与 `slurp()` 会在写第一个字节前缓存全部结果；大输入用 `-O jsonl`。`-O json` 叠加 `slurp()` 时，数组元素本身也是数组（双层）。
-- `--max-results` 触顶是错误（退出 1），不是静默截断；此时 `-O json` 不会输出残缺数组。
+- `--max-results` 触顶是错误（退出 1），不是静默截断；此时 `-O json` 不会输出残缺数组。注意它限制的是**输出端记录数**，不是流入 `slurp()` 的输入数——`slurp()` 先吃进全部输入再产出 1 条聚合结果，因此 `--max-results` 无法截断 slurp 的输入。
+- `record` 与 `line` 在 `-f text` 的 lines 模式下恒相等（逐行即逐记录）；`text-mode raw` 与 `split()` 产出的 fragment 仍是同一条记录、沿用原行号，语义不同但文档未逐一分表。
 - 非 strict 模式下单文件出错仍会继续处理其余文件，`rc=1` 且前面已产出的 jsonl/text 结果保留；`-O json` 失败时不输出部分聚合数组。
 - XPath 表达式里的前缀必须用 `--ns PREFIX=URI` 绑定；**URI 会与文档命名空间 URI 匹配**，表达式前缀可与文档前缀不同。未绑定前缀现在是编译期 `Query(2)`，不会崩溃。
 - HTML 由 `html5ever` 容错解析：会插入隐式 `<tbody>`，并把元素/属性名折叠为小写，`//table/tr`、`//A` 可能静默零匹配。
