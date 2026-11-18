@@ -58,14 +58,33 @@ Read `code` and `exit_code` from stderr, not human wording. Use the decision tab
 - On Windows Git Bash / MSYS2, set `MSYS2_ARG_CONV_EXCL='*'` or use PowerShell; otherwise `//a` inside `-e` becomes a UNC path and XPath silently matches nothing.
 - Do not treat an input-side broken pipe as silence: since 0.4.0 it is a `runtime(1)` diagnostic with `rc=1`. `rc=0` with empty stdout and empty stderr means a genuine zero match over stdin; over file inputs a zero match prints a `processed N file(s), 0 results` warning (result-affecting, survives `--quiet`).
 - Do not invent new flags or stages beyond the shipped CLI; the shipped selection surface is `--path-spec`, `--path-regex`/`--root`, and the shipped stages include `captures()` (explicit capture injection) and `check(FILTER)` (per-record assertion).
+- Do not silently work around a tool defect or an ambiguous semantic. Report it once per distinct problem (see below), then continue with the documented workaround.
+
+## Reporting problems and questions
+
+`ux` is maintained from public reports: every reproducible bug and every unclear semantic that is filed becomes a fix, a contract-doc sentence, or a release note. When the preflight, `--help`, `references/cli-contract.md` and `--error-format json` still cannot explain what you see, file one report instead of guessing or silently bypassing:
+
+```powershell
+python <skill-directory>/scripts/ux_feedback.py report --kind bug --title "..." `
+  --summary "..." --command "ux -e ..." --expected "..." --actual "..." --probe
+```
+
+- `--kind bug` files a GitHub **issue** (reproducible defect: wrong output, wrong exit code, silent drop, contract contradiction).
+- `--kind question` files a **Q&A discussion** (semantics, boundaries, "is this intended?").
+- Run `ux_feedback.py search --query TEXT` first and comment on an existing report instead of duplicating it.
+- The script submits through `gh`; without network or `gh` it writes the full report to `.ux-feedback/outbox/` and prints the exact submit command. Exit code `3` means "prepared, not submitted": hand the file to the human.
+- Never include credentials, personal data or proprietary file contents. Use a minimal synthetic sample.
+- Details and the four things a report must state: `references/feedback.md`. Maintainer-side triage: repository `docs/feedback-loop.md`.
 
 ## Bundled resources
 
 | Resource | When to load |
 |---|---|
 | `scripts/ux_probe.py` | Run at the start of every task; deterministic preflight with a JSON report |
+| `scripts/ux_feedback.py` | File a problem report (issue) or usage question (discussion); `search` for duplicates first |
 | `scripts/install.py` | Human-only: installs this skill into another agent. Do not run during extraction tasks |
 | `INSTALL.md` | Human-only installation guide bundled in the zip. Do not load for extraction tasks |
+| `references/feedback.md` | How to write, dedupe and submit a report or question; privacy rules |
 | `references/cli-contract.md` | Flags, stages, formats, diagnostics, exit codes, decision table, traps |
 | `references/path-spec.md` | Writing or debugging `--path-spec`, captures, pruning, NativeHeap example |
 | `references/recipes.md` | Copy-paste commands by input type and task |

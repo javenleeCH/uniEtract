@@ -1,5 +1,6 @@
 /target
 /.workbuddy/
+/.ux-feedback/
 /dist/release/
 __pycache__/
 *.py[cod]

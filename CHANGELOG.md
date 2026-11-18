@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### 反馈闭环
+
+- **新增（Agent 反馈通道）**：skill 新增 `scripts/ux_feedback.py` 与 `references/feedback.md`，`SKILL.md` 要求 Agent 自查（预检、`--help`、契约、`--list`、结构化诊断）后仍无法解释时主动提交报告，不得静默绕过。`--kind bug` 提交 Issue（自动补齐 `agent-report` 标签，标签缺失时退回无标签提交），`--kind question` 提交 Q&A Discussion；`search` 查重、`--probe` 附预检 JSON、`--dry-run` 预览。无 `gh` 或无网络时报告写入 `.ux-feedback/outbox/` 并打印提交命令，退出码 `3` 表示「已生成、未提交」。
+- **新增（维护侧增量检索）**：`.github/scripts/feedback_inbox.py` 用 `.ux-feedback/state.json` 记录 Issue/Discussion 各自的 `updated_at` 水位，只输出新增或有新回复的条目（评论与重开会刷新 `updated_at`）；`--mark-seen` 推进水位，`--format json` 供脚本消费，`--selftest` 离线自检并接入 CI verify job。
+- **新增（模板与入口文档）**：`.github/ISSUE_TEMPLATE/agent-report.md` + `config.yml`、`.github/DISCUSSION_TEMPLATE/q-a.yml`、`docs/feedback-loop.md`；README 增加「反馈与提问（Agent 优先）」；`.gitignore` 忽略 `.ux-feedback/`；`check_contract_docs.py` 把新增脚本、模板与文档列为必需文件，`dist/ux-extract.zip` 重新打包。
+
 ## 0.4.0 — 2026-11-17
 
 ### 变更

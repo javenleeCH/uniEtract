@@ -31,6 +31,10 @@ def source_files() -> dict:
     for path in SOURCE.rglob("*"):
         if not path.is_file():
             continue
+        # Bytecode is not shipped: running the bundled scripts must not make the
+        # zip look stale.
+        if "__pycache__" in path.parts or path.suffix == ".pyc":
+            continue
         rel = path.relative_to(SOURCE).as_posix()
         files[rel] = sha256(path.read_bytes())
     return files

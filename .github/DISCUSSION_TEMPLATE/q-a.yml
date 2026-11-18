@@ -1,0 +1,40 @@
+title: "[Q&A] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **先自查，再提问**：`ux_probe.py` 是否 `ok`、`ux --help` 与 `references/cli-contract.md` 是否已覆盖、
+        `--list` 是否确认了输入集、`--error-format json` 的 `code` 是否已说明原因。
+
+        Agent 可直接用 skill 脚本提交：`python <skill-directory>/scripts/ux_feedback.py report --kind question ...`，
+        它会连同环境与预检一起投递到这里。不要粘贴密钥、客户数据或完整业务日志。
+
+  - type: input
+    id: version
+    attributes:
+      label: ux 版本（ux --version）
+      placeholder: ux 0.4.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: 你想确认什么
+      description: 说明场景、已查过的文档章节，以及你不确定的行为
+      placeholder: "例如：--path-spec 的 re 片段里 (?<ts>...) 与显式占位同名时，期望报错还是后者覆盖？"
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: 相关命令与输出
+      description: 完整命令、最小样例、退出码与 stderr（可用 --error-format json）
+      render: shell
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: 已尝试的替代写法
+      description: 你试过哪些写法/参数，各自的结果是什么；若已用某种方式绕过，说明绕过方案的取舍

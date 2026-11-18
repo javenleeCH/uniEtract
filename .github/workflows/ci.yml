@@ -52,6 +52,12 @@ jobs:
         run: python .github/scripts/check_contract_docs.py
       - name: Skill zip matches its source tree
         run: python .github/scripts/check_skill_zip.py
+      - name: Feedback scripts offline self-test
+        # No network: these cover report composition, offline fallback, the
+        # watermark state file and the incremental selection logic.
+        run: |
+          python .github/scripts/feedback_inbox.py --selftest
+          python .agents/skills/ux-extract/scripts/ux_feedback.py selftest
       - name: Release version matches tag, manifests and docs
         run: python .github/scripts/check_release_version.py
       - name: Fuzz manifest resolves under --locked

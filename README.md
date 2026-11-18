@@ -331,4 +331,22 @@ python ~/.agents/skills/ux-extract/scripts/ux_probe.py   # 期望 {"ok": true, .
 
 预检确认 `ux` 在 PATH 或 `target/release/` 上、长帮助齐全、stdout/stderr 分离。`ux` 不是 skill 的安装前置，但执行抽取任务前需要它。重启或刷新 Agent 后，对它说「用 ux 从这个日志目录里抽出所有 ERROR 消息」即可触发。
 
-完整说明见 `.agents/skills/ux-extract/INSTALL.md`（随 zip 分发）。
+### 反馈与提问（Agent 优先）
+
+skill 要求 Agent **不要绕过工具缺陷**：跑完 `ux_probe.py`、查过 `--help` 与 `references/cli-contract.md`、用 `--list` 确认输入集、再看 `--error-format json` 的 `code` 之后仍无法解释，就用自带脚本提交报告，而不是自己猜或静默换写法：
+
+```powershell
+python ~/.agents/skills/ux-extract/scripts/ux_feedback.py report --kind bug `
+  --title "re() named group returns only the first match" `
+  --command "ux -e ..." --expected "..." --actual "..." --probe
+
+python ~/.agents/skills/ux-extract/scripts/ux_feedback.py report --kind question --title "..."
+```
+
+- 可复现缺陷 → GitHub Issue（自动带 `agent-report` 标签）；语义/边界疑问 → Q&A Discussion。
+- 先 `search --query TEXT` 查重；`--dry-run` 预览；无网络或无 `gh` 时报告落到 `.ux-feedback/outbox/` 并打印提交命令（退出码 `3` = 已生成未提交）。
+- 报告公开可见：只放最小合成样例，不含密钥、客户数据或完整业务日志。
+
+维护侧用 `.github/scripts/feedback_inbox.py` 增量检索：`python .github/scripts/feedback_inbox.py` 只列出上次水位之后新增或有新回复的 Issue/Discussion，`--mark-seen` 推进 `.ux-feedback/state.json`，`--format json` 供脚本消费。通道、分派与关闭标准见 `docs/feedback-loop.md`。
+
+完整安装说明见 `.agents/skills/ux-extract/INSTALL.md`（随 zip 分发）。

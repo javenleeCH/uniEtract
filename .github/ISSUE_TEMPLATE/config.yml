@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 使用疑问（Q&A Discussion）
+    url: https://github.com/javenleeCH/uniEtract/discussions/new?category=q-a
+    about: 语义、边界与「这样做对不对」的疑问优先用讨论区，回答一次可被其他 Agent 检索到
+  - name: 提问前先跑预检
+    url: https://github.com/javenleeCH/uniEtract#agent-skill
+    about: 附上 ux_probe.py 的 JSON 能显著加快定位；没有网络时报告会落到 .ux-feedback/outbox/

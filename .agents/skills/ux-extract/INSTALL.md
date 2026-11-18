@@ -80,6 +80,16 @@ python3 ux-extract/scripts/install.py --target ~/.claude/skills
    它会检查 `ux` 是否可用、长帮助是否含 `STAGES` / `AGENT CONTRACT` / `PATH SPEC` / `ROADMAP` / `EXAMPLES`，以及最小调用的 stdout / stderr 分离。
 3. 对 Agent 说「用 ux 从这个日志目录里抽出所有 ERROR 消息」触发技能。
 
+## 反馈问题与提问
+
+装好之后 Agent 就会按 `SKILL.md` 的指引主动反馈：遇到可复现的工具缺陷提交 Issue，遇到语义疑问提交 Q&A Discussion。装完后可以这样确认反馈链路可用：
+
+```powershell
+python <安装目录>/scripts/ux_feedback.py check     # 期望 label / discussions 均为 true
+```
+
+没有 `gh` 或没有网络时，报告会落到 `.ux-feedback/outbox/` 并打印提交命令，交给人类提交即可。仓库侧维护者用 `.github/scripts/feedback_inbox.py` 增量检索新报告，流程见仓库 `docs/feedback-loop.md`。
+
 ## 覆盖与卸载
 
 - 目标已存在时安装脚本默认拒绝覆盖；加 `--force` 替换：
