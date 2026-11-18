@@ -17,7 +17,7 @@
 | 崩溃、错误退出码、与文档不符、数据被静默跳过、契约自相矛盾 | Issue | `agent-report` + `bug` |
 | 语义、边界、扩展性等「这样做对不对」的疑问 | Q&A Discussion | `q-a` 分类 |
 
-Issue 模板：`.github/ISSUE_TEMPLATE/agent-report.md`（`agent-report` 标签由 `ux_feedback.py` 自动补齐，缺失时退回无标签提交）。Discussion 模板：`.github/DISCUSSION_TEMPLATE/q-a.yml`。`config.yml` 把空白 Issue 入口指向 Q&A，避免疑问散落成低质量 Issue。
+Issue 模板：`.github/ISSUE_TEMPLATE/agent-report.md`（仓库已创建 `agent-report` 标签；提交时自动带上，标签不可用时退回无标签提交）。Discussion 模板：`.github/DISCUSSION_TEMPLATE/q-a.yml`。`config.yml` 把空白 Issue 入口指向 Q&A，避免疑问散落成低质量 Issue。
 
 ## 使用方：怎么提交
 
@@ -38,7 +38,8 @@ python <skill-directory>/scripts/ux_feedback.py report --kind bug `
 
 - `--kind bug` → Issue；`--kind question` → Q&A Discussion。
 - 报告自动带环境（`ux --version`、可执行文件、OS、Python）；`--probe` 附 `ux_probe.py` 的 JSON。
-- `--dry-run` 先看再发；`search` 先查重。
+- 已经写好整段 markdown 时用 `--raw-body -` 一步提交（body 整段送入、环境自动追加）；`--body-file -` 读 stdin 补充上下文。
+- `--dry-run` 先看再发；`search` 先查重（`errors` 非空表示检索没跑完，不代表没有重复）；`--timeout` 控制单次 `gh` 调用超时。
 - 没有 `gh` 或没有网络时，报告落到 `.ux-feedback/outbox/`（退出码 `3`），脚本打印 `gh issue create ...` 或 Discussion 网页入口，交给人类提交。
 - 报告是公开的：只放最小合成样例，不放密钥、客户数据或完整业务日志。
 

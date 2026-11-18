@@ -344,7 +344,7 @@ python ~/.agents/skills/ux-extract/scripts/ux_feedback.py report --kind question
 ```
 
 - 可复现缺陷 → GitHub Issue（自动带 `agent-report` 标签）；语义/边界疑问 → Q&A Discussion。
-- 先 `search --query TEXT` 查重；`--dry-run` 预览；无网络或无 `gh` 时报告落到 `.ux-feedback/outbox/` 并打印提交命令（退出码 `3` = 已生成未提交）。
+- 先 `search --query TEXT` 查重；`--dry-run` 预览；无网络或无 `gh` 时报告落到 `.ux-feedback/outbox/` 并打印提交命令（退出码 `3` = 已生成未提交）。已经写好整段报告时用 `--raw-body -`（或 `--body-file -`）从 stdin 一步提交，环境信息自动追加。
 - 报告公开可见：只放最小合成样例，不含密钥、客户数据或完整业务日志。
 
 维护侧用 `.github/scripts/feedback_inbox.py` 增量检索：`python .github/scripts/feedback_inbox.py` 只列出上次水位之后新增或有新回复的 Issue/Discussion，`--mark-seen` 推进 `.ux-feedback/state.json`，`--format json` 供脚本消费。通道、分派与关闭标准见 `docs/feedback-loop.md`。

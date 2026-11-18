@@ -38,8 +38,32 @@ python <skill-directory>/scripts/ux_feedback.py report `
 
 - `--kind question` 会把报告投递到 Q&A Discussion。
 - `--dry-run` 只打印报告、不提交：拿不准措辞或含敏感信息时先过一遍。
-- 提交前脚本会尽量创建 `agent-report` 标签；仓库没有该标签时自动退回不带标签的提交。
+- 仓库已创建 `agent-report` 标签：Issue 自动带 `agent-report`（bug 另带 `bug`），标签不可用时退回无标签提交。
 - 报告里的环境（`ux --version`、可执行文件路径、OS、Python）由脚本自动采集；`--probe` 附上预检 JSON。
+- `--timeout 秒` 控制单次 `gh` 调用的超时（默认 90）；网络卡住时不会无限等待。
+
+### 已经写好了整段报告时：一步提交
+
+不必把内容拆成 `--summary/--command/...` 五个参数，直接把 markdown 交给 `--raw-body`，脚本会在文末追加环境信息：
+
+```powershell
+python <skill-directory>/scripts/ux_feedback.py report --kind bug `
+  --title 're() named group returns only the first match on a log file' `
+  --raw-body - < report.md
+```
+
+`--raw-body` 与结构化参数互斥（同时给会直接报错，避免内容被静默丢弃）；`--body-file` 也支持 `-` 读 stdin，用于补充上下文。
+
+### 没有 Python 时
+
+直接调 `gh`（仍建议保留四要素）：
+
+```powershell
+gh issue create --repo javenleeCH/uniEtract --label agent-report `
+  --title '...' --body-file report.md
+```
+
+疑问不改走 Issue，打开 `https://github.com/javenleeCH/uniEtract/discussions/new?category=q-a` 粘贴报告。
 
 ### 写清楚这四件事
 
@@ -54,7 +78,7 @@ python <skill-directory>/scripts/ux_feedback.py report `
 python <skill-directory>/scripts/ux_feedback.py search --query "split jsonl records"
 ```
 
-输出 JSON 列出相似 Issue 与 Discussion。已有同类报告时**补充复现细节**（评论/跟帖），不要另开重复条目。
+输出 JSON：`matches` 列出相似 Issue 与 Discussion，`errors` 非空表示检索没跑完（无 `gh`、网络失败、GraphQL 错误）——此时先重试或按 `errors` 里的原因处理，别把「空列表」当成「没有重复」。已有同类报告时**补充复现细节**（评论/跟帖），不要另开重复条目。
 
 ## 没有网络或没有 `gh` 时
 

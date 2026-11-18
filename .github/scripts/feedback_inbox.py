@@ -40,6 +40,21 @@ class InboxError(RuntimeError):
     pass
 
 
+def use_utf8_streams():
+    """Write UTF-8 when stdio is redirected.
+
+    Python picks the ANSI code page for Windows pipes while CI logs and agent
+    runners decode UTF-8; without this, non-ASCII titles show as mojibake.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if stream is None or stream.isatty():
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 # ---------------------------------------------------------------------------
 # Timestamps and state
 # ---------------------------------------------------------------------------
@@ -431,6 +446,7 @@ def build_parser():
 
 
 def main(argv=None):
+    use_utf8_streams()
     args = build_parser().parse_args(argv)
     if args.selftest:
         return selftest(args)

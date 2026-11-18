@@ -69,10 +69,18 @@ python <skill-directory>/scripts/ux_feedback.py report --kind bug --title "..." 
   --summary "..." --command "ux -e ..." --expected "..." --actual "..." --probe
 ```
 
+If you already wrote the whole report (the four things listed below), pipe it in one step and let the script append environment facts:
+
+```powershell
+python <skill-directory>/scripts/ux_feedback.py report --kind bug `
+  --title "..." --raw-body - < report.md
+```
+
 - `--kind bug` files a GitHub **issue** (reproducible defect: wrong output, wrong exit code, silent drop, contract contradiction).
 - `--kind question` files a **Q&A discussion** (semantics, boundaries, "is this intended?").
 - Run `ux_feedback.py search --query TEXT` first and comment on an existing report instead of duplicating it.
 - The script submits through `gh`; without network or `gh` it writes the full report to `.ux-feedback/outbox/` and prints the exact submit command. Exit code `3` means "prepared, not submitted": hand the file to the human.
+- Without Python, file it directly: `gh issue create --repo javenleeCH/uniEtract --label agent-report --title "..." --body-file report.md` for bugs, or open `https://github.com/javenleeCH/uniEtract/discussions/new?category=q-a` for questions.
 - Never include credentials, personal data or proprietary file contents. Use a minimal synthetic sample.
 - Details and the four things a report must state: `references/feedback.md`. Maintainer-side triage: repository `docs/feedback-loop.md`.
 
