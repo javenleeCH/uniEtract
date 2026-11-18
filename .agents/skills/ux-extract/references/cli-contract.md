@@ -19,6 +19,9 @@ ux [FLAGS] -e 'stage(...) | stage(...)' [PATH|GLOB|- ...]
 | `--encoding` | `utf-8\|utf-16le\|utf-16be\|gbk\|gb18030\|auto` |
 | `--ns PREFIX=URI` | XPath 前缀绑定，可重复；URI 与文档命名空间 URI 匹配 |
 | `--path-spec SPEC` | 结构化路径匹配，与位置参数互斥 |
+| `--path-regex REGEX` | 对归一化相对路径做后置正则过滤（可重复，全 AND），不剪枝 |
+| `--root DIR` | 把相对位置参数重新锚定到 DIR，绝对路径不受影响 |
+| `--sort-by CAPTURE[:num]` | 按 path-spec 命名捕获排序；`CAPTURE` 字符串、`CAPTURE:num` 数值（需 `--path-spec`） |
 | `--list`, `--dry-run` | 只输出输入集 JSONL，不读文件内容；每行带 `type`/`path`（及 path-spec 的 `captures`），并追加 `format`（仅当格式可由 `-f` 或扩展名确定；内容无关提示） |
 | `--completions SHELL` | bash / zsh / fish / powershell / elvish |
 | `--error-format` | `text`（默认）\| `json` |
@@ -38,7 +41,7 @@ ux [FLAGS] -e 'stage(...) | stage(...)' [PATH|GLOB|- ...]
 | `--line-buffered` | 逐条 flush；长驻管道必加 |
 | `--compact` | 关闭 `-O json` 缩进 |
 
-## 8 个阶段
+## 9 个阶段
 
 | 阶段 | 接受 | 输出 |
 |---|---|---|
@@ -117,4 +120,4 @@ ux [FLAGS] -e 'stage(...) | stage(...)' [PATH|GLOB|- ...]
 
 ## 能力边界
 
-不做网络访问、并发、稳定库 API、完整 jq / XPath 1.0 兼容、schema 校验、join、跨文件关联、结果排序、提取提示（hint）。captures 只读元数据，需 `captures()` 阶段显式注入。库直调 `run()` 仅用于内部分层与测试，不承诺 API 稳定性。
+不做网络访问、并发、稳定库 API、完整 jq / XPath 1.0 兼容、join、跨文件关联、结果重排序（`--sort-by` 仅按 captures 显式排序）、提取提示（hint）。schema 断言用 `check(FILTER)` 逐条校验（局部、非关系）。captures 只读元数据，需 `captures()` 阶段显式注入。库直调 `run()` 仅用于内部分层与测试，不承诺 API 稳定性。

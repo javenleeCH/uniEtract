@@ -80,7 +80,7 @@ ux --max-results 100 -e 'jq(.id)' big.jsonl
 ux -f jsonl --with-source -e 'jq(.id)' events.jsonl
 ```
 
-输出为 `{value, source:{path,line,record}}`；用 `--path-spec` 时 `source` 还会带 `captures`（只读字符串，DSL 不可引用）。
+输出为 `{value, source:{path,line,record}}`；用 `--path-spec` 时 `source` 还会带 `captures`（默认只读字符串，需 `captures()` 阶段注入才能进流水线）。
 
 ## 结构化路径筛选
 
@@ -105,7 +105,8 @@ ux --encoding utf-16le -f text -e 'jq(.)' utf16.txt
 # 显式 - 声明 stdin，避免终端挂起
 ux -f jsonl -O text -e 'jq(.id)' -
 
-# 无人值守：完全拒绝 stdin，必须给路径
+# 无人值守：完全拒绝 stdin，必须给路径。--quiet 只压非结果影响告警，
+# 跳文件/空文件/零匹配等结果影响告警仍会输出（JSON 带 category:result_set）。
 ux --no-stdin --error-format json --quiet -e 'jq(.id)' .\data\
 
 # 结构化错误驱动的调用骨架
@@ -123,5 +124,5 @@ ux --quiet --error-format json -f jsonl -e 'jq(select(.level == "ERROR"))' .\dat
 | 大输入 | `-O jsonl` + 显式 `-f` + `--line-buffered`（若为管道） |
 | 需要来源 | `--with-source` + `-O jsonl` / `-O json` |
 | 路径带语义 | `--path-spec` + `--list` 预演 |
-| 完整性优先 | 文件输入，不用管道；不用 `--quiet` 掩盖 warning |
+| 完整性优先 | 文件输入，不用管道；`--quiet` 现在只压非结果影响告警，结果影响告警（跳文件/空文件/零匹配）仍可见 |
 | 不允许部分结果 | 加 `--strict` |

@@ -56,8 +56,8 @@ Read `code` and `exit_code` from stderr, not human wording. Use the decision tab
 - Treat `--max-results` as a hard error (exit 1), not a silent truncation.
 - Bind XPath prefixes with `--ns PREFIX=URI`; unbound prefixes fail at compile time with `Query(2)`.
 - On Windows Git Bash / MSYS2, set `MSYS2_ARG_CONV_EXCL='*'` or use PowerShell; otherwise `//a` inside `-e` becomes a UNC path and XPath silently matches nothing.
-- Do not treat an input-side broken pipe as silence: since 0.4.0 it is a `runtime(1)` diagnostic with `rc=1`. `rc=0` with empty stdout and empty stderr now means a genuine zero match only.
-- Do not invent `--path-regex`, `--root`, extraction hints, or capture injection: those are not part of the shipped CLI.
+- Do not treat an input-side broken pipe as silence: since 0.4.0 it is a `runtime(1)` diagnostic with `rc=1`. `rc=0` with empty stdout and empty stderr means a genuine zero match over stdin; over file inputs a zero match prints a `processed N file(s), 0 results` warning (result-affecting, survives `--quiet`).
+- Do not invent new flags or stages beyond the shipped CLI; the shipped selection surface is `--path-spec`, `--path-regex`/`--root`, and the shipped stages include `captures()` (explicit capture injection) and `check(FILTER)` (per-record assertion).
 
 ## Bundled resources
 
